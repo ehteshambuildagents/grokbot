@@ -1,0 +1,99 @@
+# LocalCrew on a Linux host with Docker. NOT verified on the development machine (no Docker there);
+# see docs/CAPABILITIES.md. Ollama runs on the host for GPU access (see docs/MODELS.md).
+name: localcrew
+
+x-app-env: &app-env
+  LOCALCREW_DATABASE_URL: postgresql+psycopg://localcrew:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/localcrew
+  LOCALCREW_DATA_DIR: /data
+  LOCALCREW_SECRET_KEY_FILE: /keys/secrets.key
+  LOCALCREW_OLLAMA_URL: ${LOCALCREW_OLLAMA_URL:-http://host.docker.internal:11434}
+  LOCALCREW_DEFAULT_MODEL: ${LOCALCREW_DEFAULT_MODEL:-qwen2.5:1.5b}
+  LOCALCREW_COMPUTER_URL: http://computer:8765
+  LOCALCREW_COMPUTER_TOKEN: ${LOCALCREW_COMPUTER_TOKEN:?set LOCALCREW_COMPUTER_TOKEN in .env}
+  LOCALCREW_PUBLIC_ORIGIN: ${LOCALCREW_PUBLIC_ORIGIN:-http://127.0.0.1:8000}
+  LOCALCREW_SECURE_COOKIES: ${LOCALCREW_SECURE_COOKIES:-false}
+  LOCALCREW_SEARXNG_URL: ${LOCALCREW_SEARXNG_URL:-}
+
+services:
+  db:
+    image: postgres:17.6-bookworm
+    environment:
+      POSTGRES_USER: localcrew
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: localcrew
+    volumes: [pgdata:/var/lib/postgresql/data]
+    networks: [backend]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U localcrew"]
+      interval: 5s
+      retries: 20
+
+  migrate:
+    build: { context: .., dockerfile: infra/docker/app.Dockerfile }
+    command: ["python", "-m", "alembic", "-c", "services/api/alembic.ini", "upgrade", "head"]
+    working_dir: /app/services/api
+    environment: *app-env
+    networks: [backend]
+    depends_on: { db: { condition: service_healthy } }
+
+  api:
+    build: { context: .., dockerfile: infra/docker/app.Dockerfile }
+    environment: *app-env
+    ports: ["127.0.0.1:8000:8000"]   # localhost only; put a TLS reverse proxy in front for remote access
+    volumes: [appdata:/data, keys:/keys]
+    networks: [backend, exec]
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    depends_on: { migrate: { condition: service_completed_successfully }, computer: { condition: service_healthy } }
+    healthcheck:
+      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://127.0.0.1:8000/api/setup').raise_for_status()"]
+      interval: 10s
+      retries: 10
+    restart: unless-stopped
+
+  worker:
+    build: { context: .., dockerfile: infra/docker/app.Dockerfile }
+    command: ["python", "services/worker/worker.py"]
+    environment: *app-env
+    volumes: [appdata:/data, keys:/keys]
+    networks: [backend, exec]
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    depends_on: { migrate: { condition: service_completed_successfully } }
+    restart: unless-stopped
+
+  computer:
+    build: { context: .., dockerfile: infra/docker/computer.Dockerfile }
+    environment:
+      LOCALCREW_DATA_DIR: /data
+      LOCALCREW_COMPUTER_TOKEN: ${LOCALCREW_COMPUTER_TOKEN}
+      LOCALCREW_PRIVATE_HOST_ALLOWLIST: ${LOCALCREW_PRIVATE_HOST_ALLOWLIST:-fixture:8899}
+    # Shares workspaces (not keys, not the database). Browser profiles live only in this container's volume.
+    volumes: [appdata:/data, browserprofiles:/data/browser-profiles]
+    networks: [exec, egress]
+    shm_size: 1gb
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+    pids_limit: 512
+    mem_limit: 3g
+    healthcheck:
+      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://127.0.0.1:8765/health').raise_for_status()"]
+      interval: 10s
+      retries: 10
+    restart: unless-stopped
+
+  fixture:   # deterministic test fixture app (docker compose --profile test up)
+    profiles: [test]
+    build: { context: .., dockerfile: infra/docker/app.Dockerfile }
+    command: ["python", "-c", "import uvicorn,sys; sys.path.insert(0,'/app/tests/fixtures'); import fixture_app; uvicorn.run(fixture_app.app, host='0.0.0.0', port=8899)"]
+    volumes: [../tests:/app/tests:ro]
+    networks: [egress]
+
+networks:
+  backend: {}          # db, api, worker
+  exec: { internal: true }   # api/worker ↔ computer, no internet
+  egress: {}           # computer's browser internet access (SSRF guard blocks private ranges)
+
+volumes:
+  pgdata: {}
+  appdata: {}
+  keys: {}
+  browserprofiles: {}

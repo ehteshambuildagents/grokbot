@@ -1,0 +1,552 @@
+{
+ "list_files": {
+  "effect": "read",
+  "description": "List files in the shared workspace directory",
+  "parameters": {
+   "properties": {
+    "path": {
+     "default": "",
+     "description": "Path relative to the shared workspace",
+     "maxLength": 500,
+     "title": "Path",
+     "type": "string"
+    }
+   },
+   "title": "PathA",
+   "type": "object"
+  }
+ },
+ "read_file": {
+  "effect": "read",
+  "description": "Read a text file from the workspace",
+  "parameters": {
+   "properties": {
+    "path": {
+     "default": "",
+     "description": "Path relative to the shared workspace",
+     "maxLength": 500,
+     "title": "Path",
+     "type": "string"
+    }
+   },
+   "title": "PathA",
+   "type": "object"
+  }
+ },
+ "write_file": {
+  "effect": "workspace_write",
+  "description": "Write a text file in the workspace (previous version is backed up)",
+  "parameters": {
+   "properties": {
+    "path": {
+     "description": "Path relative to the workspace",
+     "maxLength": 500,
+     "minLength": 1,
+     "title": "Path",
+     "type": "string"
+    },
+    "content": {
+     "maxLength": 500000,
+     "title": "Content",
+     "type": "string"
+    }
+   },
+   "required": [
+    "path",
+    "content"
+   ],
+   "title": "WriteA",
+   "type": "object"
+  }
+ },
+ "move_file": {
+  "effect": "workspace_write",
+  "description": "Move or rename a workspace file",
+  "parameters": {
+   "properties": {
+    "src": {
+     "maxLength": 500,
+     "minLength": 1,
+     "title": "Src",
+     "type": "string"
+    },
+    "dst": {
+     "maxLength": 500,
+     "minLength": 1,
+     "title": "Dst",
+     "type": "string"
+    }
+   },
+   "required": [
+    "src",
+    "dst"
+   ],
+   "title": "MoveA",
+   "type": "object"
+  }
+ },
+ "search_files": {
+  "effect": "read",
+  "description": "Search workspace files by name or content",
+  "parameters": {
+   "properties": {
+    "query": {
+     "maxLength": 200,
+     "minLength": 1,
+     "title": "Query",
+     "type": "string"
+    }
+   },
+   "required": [
+    "query"
+   ],
+   "title": "SearchA",
+   "type": "object"
+  }
+ },
+ "create_artifact": {
+  "effect": "workspace_write",
+  "description": "Create a downloadable deliverable (markdown, text, csv or json)",
+  "parameters": {
+   "properties": {
+    "name": {
+     "description": "File name, e.g. report.md",
+     "pattern": "^[\\w\\-. ]{1,120}\\.(md|txt|csv|json)$",
+     "title": "Name",
+     "type": "string"
+    },
+    "content": {
+     "maxLength": 2000000,
+     "title": "Content",
+     "type": "string"
+    }
+   },
+   "required": [
+    "name",
+    "content"
+   ],
+   "title": "ArtifactA",
+   "type": "object"
+  }
+ },
+ "run_command": {
+  "effect": "shell",
+  "description": "Run a program with an argument array inside the task environment (no shell)",
+  "parameters": {
+   "properties": {
+    "argv": {
+     "description": "Program and arguments, no shell",
+     "items": {
+      "type": "string"
+     },
+     "maxItems": 64,
+     "minItems": 1,
+     "title": "Argv",
+     "type": "array"
+    },
+    "cwd": {
+     "default": "",
+     "description": "Workspace-relative working directory",
+     "maxLength": 500,
+     "title": "Cwd",
+     "type": "string"
+    },
+    "timeout_s": {
+     "default": 60,
+     "maximum": 600,
+     "minimum": 1,
+     "title": "Timeout S",
+     "type": "integer"
+    }
+   },
+   "required": [
+    "argv"
+   ],
+   "title": "CommandA",
+   "type": "object"
+  }
+ },
+ "run_shell": {
+  "effect": "shell",
+  "description": "Run an arbitrary shell script (separately gated; disabled by default)",
+  "parameters": {
+   "properties": {
+    "script": {
+     "maxLength": 10000,
+     "minLength": 1,
+     "title": "Script",
+     "type": "string"
+    },
+    "timeout_s": {
+     "default": 60,
+     "maximum": 600,
+     "minimum": 1,
+     "title": "Timeout S",
+     "type": "integer"
+    }
+   },
+   "required": [
+    "script"
+   ],
+   "title": "ShellA",
+   "type": "object"
+  }
+ },
+ "browser_open": {
+  "effect": "browser",
+  "description": "Open a URL in the shared browser and return page text",
+  "parameters": {
+   "properties": {
+    "url": {
+     "maxLength": 2000,
+     "title": "Url",
+     "type": "string"
+    }
+   },
+   "required": [
+    "url"
+   ],
+   "title": "OpenA",
+   "type": "object"
+  }
+ },
+ "browser_snapshot": {
+  "effect": "browser",
+  "description": "Return the current page's accessible text and interactive elements",
+  "parameters": {
+   "properties": {},
+   "title": "NoA",
+   "type": "object"
+  }
+ },
+ "browser_click": {
+  "effect": "browser",
+  "description": "Click an element by role and accessible name",
+  "parameters": {
+   "properties": {
+    "role": {
+     "default": "",
+     "description": "ARIA role, e.g. button, link",
+     "maxLength": 40,
+     "title": "Role",
+     "type": "string"
+    },
+    "name": {
+     "description": "Accessible name or visible text",
+     "maxLength": 200,
+     "minLength": 1,
+     "title": "Name",
+     "type": "string"
+    }
+   },
+   "required": [
+    "name"
+   ],
+   "title": "ClickA",
+   "type": "object"
+  }
+ },
+ "browser_type": {
+  "effect": "browser",
+  "description": "Type into a form field by its label (password fields are refused)",
+  "parameters": {
+   "properties": {
+    "label": {
+     "description": "Label or placeholder of the field",
+     "maxLength": 200,
+     "minLength": 1,
+     "title": "Label",
+     "type": "string"
+    },
+    "text": {
+     "maxLength": 5000,
+     "title": "Text",
+     "type": "string"
+    },
+    "submit": {
+     "default": false,
+     "title": "Submit",
+     "type": "boolean"
+    }
+   },
+   "required": [
+    "label",
+    "text"
+   ],
+   "title": "TypeA",
+   "type": "object"
+  }
+ },
+ "browser_wait": {
+  "effect": "browser",
+  "description": "Wait until text appears on the page",
+  "parameters": {
+   "properties": {
+    "text": {
+     "maxLength": 200,
+     "minLength": 1,
+     "title": "Text",
+     "type": "string"
+    },
+    "timeout_s": {
+     "default": 15,
+     "maximum": 120,
+     "minimum": 1,
+     "title": "Timeout S",
+     "type": "integer"
+    }
+   },
+   "required": [
+    "text"
+   ],
+   "title": "WaitA",
+   "type": "object"
+  }
+ },
+ "browser_screenshot": {
+  "effect": "browser",
+  "description": "Save a screenshot of the current page as an artifact (not interpreted by the model)",
+  "parameters": {
+   "properties": {},
+   "title": "NoA",
+   "type": "object"
+  }
+ },
+ "browser_upload": {
+  "effect": "external_write",
+  "description": "Upload a workspace file into a file input",
+  "parameters": {
+   "properties": {
+    "label": {
+     "maxLength": 200,
+     "minLength": 1,
+     "title": "Label",
+     "type": "string"
+    },
+    "path": {
+     "description": "Workspace file to upload",
+     "maxLength": 500,
+     "minLength": 1,
+     "title": "Path",
+     "type": "string"
+    }
+   },
+   "required": [
+    "label",
+    "path"
+   ],
+   "title": "UploadA",
+   "type": "object"
+  }
+ },
+ "browser_download": {
+  "effect": "browser",
+  "description": "Click a link/button that downloads a file and save it into the workspace",
+  "parameters": {
+   "properties": {
+    "role": {
+     "default": "",
+     "description": "ARIA role, e.g. button, link",
+     "maxLength": 40,
+     "title": "Role",
+     "type": "string"
+    },
+    "name": {
+     "description": "Accessible name or visible text",
+     "maxLength": 200,
+     "minLength": 1,
+     "title": "Name",
+     "type": "string"
+    }
+   },
+   "required": [
+    "name"
+   ],
+   "title": "ClickA",
+   "type": "object"
+  }
+ },
+ "fetch_url": {
+  "effect": "read",
+  "description": "HTTP GET a public URL and return its text (private addresses are blocked)",
+  "parameters": {
+   "properties": {
+    "url": {
+     "maxLength": 2000,
+     "title": "Url",
+     "type": "string"
+    }
+   },
+   "required": [
+    "url"
+   ],
+   "title": "FetchA",
+   "type": "object"
+  }
+ },
+ "web_search": {
+  "effect": "read",
+  "description": "Search the web through the configured self-hosted search service",
+  "parameters": {
+   "properties": {
+    "query": {
+     "maxLength": 300,
+     "minLength": 1,
+     "title": "Query",
+     "type": "string"
+    }
+   },
+   "required": [
+    "query"
+   ],
+   "title": "QueryA",
+   "type": "object"
+  }
+ },
+ "remember": {
+  "effect": "workspace_write",
+  "description": "Save a durable fact to memory (never credentials)",
+  "parameters": {
+   "properties": {
+    "content": {
+     "maxLength": 1000,
+     "minLength": 3,
+     "title": "Content",
+     "type": "string"
+    },
+    "shared_with_all_my_bots": {
+     "default": false,
+     "title": "Shared With All My Bots",
+     "type": "boolean"
+    }
+   },
+   "required": [
+    "content"
+   ],
+   "title": "RememberA",
+   "type": "object"
+  }
+ },
+ "recall": {
+  "effect": "read",
+  "description": "Search memory",
+  "parameters": {
+   "properties": {
+    "query": {
+     "maxLength": 300,
+     "minLength": 1,
+     "title": "Query",
+     "type": "string"
+    }
+   },
+   "required": [
+    "query"
+   ],
+   "title": "QueryA",
+   "type": "object"
+  }
+ },
+ "handoff": {
+  "effect": "workspace_write",
+  "description": "Delegate a sub-task to a teammate bot (asynchronous)",
+  "parameters": {
+   "properties": {
+    "bot": {
+     "description": "Name of the teammate bot",
+     "maxLength": 80,
+     "minLength": 1,
+     "title": "Bot",
+     "type": "string"
+    },
+    "objective": {
+     "maxLength": 4000,
+     "minLength": 3,
+     "title": "Objective",
+     "type": "string"
+    },
+    "deliverable": {
+     "default": "",
+     "maxLength": 500,
+     "title": "Deliverable",
+     "type": "string"
+    },
+    "completion_criteria": {
+     "default": "",
+     "maxLength": 1000,
+     "title": "Completion Criteria",
+     "type": "string"
+    },
+    "source_refs": {
+     "items": {
+      "type": "string"
+     },
+     "maxItems": 20,
+     "title": "Source Refs",
+     "type": "array"
+    },
+    "tool_budget": {
+     "default": 8,
+     "maximum": 50,
+     "minimum": 1,
+     "title": "Tool Budget",
+     "type": "integer"
+    },
+    "deadline_minutes": {
+     "default": 60,
+     "maximum": 1440,
+     "minimum": 1,
+     "title": "Deadline Minutes",
+     "type": "integer"
+    }
+   },
+   "required": [
+    "bot",
+    "objective"
+   ],
+   "title": "HandoffA",
+   "type": "object"
+  }
+ },
+ "tracker_list_issues": {
+  "effect": "read",
+  "description": "List issues from the connected issue tracker",
+  "parameters": {
+   "properties": {},
+   "title": "NoA",
+   "type": "object"
+  }
+ },
+ "tracker_create_issue": {
+  "effect": "external_write",
+  "description": "Submit a new issue to the connected issue tracker (external write)",
+  "parameters": {
+   "properties": {
+    "title": {
+     "maxLength": 200,
+     "minLength": 3,
+     "title": "Title",
+     "type": "string"
+    },
+    "body": {
+     "maxLength": 20000,
+     "title": "Body",
+     "type": "string"
+    },
+    "labels": {
+     "items": {
+      "type": "string"
+     },
+     "maxItems": 10,
+     "title": "Labels",
+     "type": "array"
+    }
+   },
+   "required": [
+    "title",
+    "body"
+   ],
+   "title": "TrackerCreateA",
+   "type": "object"
+  }
+ }
+}

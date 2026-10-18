@@ -1,0 +1,39 @@
+@import "tailwindcss";
+
+
+@theme {
+  --color-bg: var(--bg);
+  --color-panel: var(--panel);
+  --color-hover: var(--hover);
+  --color-line: var(--line);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --font-sans: ui-sans-serif, system-ui, "Segoe UI", Roboto, sans-serif;
+}
+
+:root {
+  --bg: #f6f7f6;
+  --panel: #ffffff;
+  --hover: #eef2f1;
+  --line: #d9dfdd;
+  --fg: #16201e;
+  --muted: #5d6b68;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not(.light) {
+    --bg: #0f1514;
+    --panel: #161e1c;
+    --hover: #1f2a28;
+    --line: #2c3a37;
+    --fg: #e6eeec;
+    --muted: #94a5a1;
+    color-scheme: dark;
+  }
+}
+
+html, body, #root { height: 100%; }
+body { background: var(--bg); color: var(--fg); -webkit-tap-highlight-color: transparent; }
+:focus-visible { outline: 2px solid #0f766e; outline-offset: 2px; }
+textarea, input, select { font-size: 16px; }
+@media (min-width: 768px) { textarea, input, select { font-size: 14px; } }

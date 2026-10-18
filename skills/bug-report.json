@@ -1,0 +1,19 @@
+{
+  "name": "Reproduce and report a web bug",
+  "spec": {
+    "purpose": "Reproduce a reported web defect, capture evidence, and draft a bug report; ask before filing externally.",
+    "trigger_conditions": ["User reports a defect in a web page they can reach"],
+    "inputs": [{"name": "url", "label": "Page to test"}, {"name": "expected", "label": "Expected behaviour"}],
+    "prerequisites": ["Page reachable from the computer service", "fixture_tracker (or other tracker) connection for filing"],
+    "permissions": ["browser_open", "browser_snapshot", "browser_screenshot", "create_artifact", "tracker_create_issue"],
+    "steps": [
+      {"tool": "browser_open", "args": {"url": "{{url}}"}},
+      {"tool": "browser_screenshot", "args": {}},
+      {"tool": "create_artifact", "args": {"name": "bug-report.md", "content": "steps, expected, actual, console errors, screenshot id"}},
+      {"tool": "tracker_create_issue", "args": {"title": "…", "body": "…"}, "note": "requires approval"}
+    ],
+    "validation": ["Actual result differs from {{expected}}", "bug-report.md exists", "screenshot artifact exists"],
+    "failure_handling": ["If sign-in is required, stop and ask for a human takeover", "Never retry a submission whose outcome is unknown"],
+    "output_contract": "bug-report.md + screenshot + tracker issue id (after approval)"
+  }
+}

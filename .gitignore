@@ -1,0 +1,10 @@
+.venv/
+.local/
+.env
+__pycache__/
+*.pyc
+node_modules/
+apps/web/dist/
+apps/web/test-results/
+apps/web/playwright-report/
+tests/e2e/.e2e-user.json

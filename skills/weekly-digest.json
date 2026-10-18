@@ -1,0 +1,14 @@
+{
+  "name": "Weekly workspace digest",
+  "spec": {
+    "purpose": "Summarize what changed in the shared workspace this week.",
+    "trigger_conditions": ["Scheduled routine, e.g. every monday at 9am"],
+    "inputs": [],
+    "prerequisites": [],
+    "permissions": ["list_files", "read_file", "create_artifact"],
+    "steps": ["List workspace files", "Read recently modified text files", "Write digest.md with one bullet per file, citing paths"],
+    "validation": ["Every bullet cites a workspace path that exists"],
+    "failure_handling": ["If the workspace is empty, say so instead of inventing content"],
+    "output_contract": "digest.md"
+  }
+}
