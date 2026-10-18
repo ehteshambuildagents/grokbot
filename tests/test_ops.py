@@ -2,6 +2,7 @@
 import os
 import subprocess
 import sys
+from pathlib import Path
 
 import httpx
 from conftest import ENV, FIXTURE, ROOT, TMP, call, drain, set_scripts
@@ -96,3 +97,28 @@ def test_qa_workflow_reproduce_report_and_ask_before_submit(client):
     drain()
     assert client.task(tid)["status"] == "succeeded"
     assert httpx.get(f"{FIXTURE}/admin/state").json()["issues"][0]["title"] == "Bug: 2+2 returns 5"
+
+
+def test_backup_skips_links_and_never_follows_them(tmp_path):
+    """Linux CI regression: a symlink in a workspace made the archive unrestorable; on Windows a junction could have
+    pulled files from outside the data directory into the backup."""
+    import tarfile
+    sys.path.insert(0, str(ROOT / "infra" / "scripts"))
+    import ops
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "secret.txt").write_text("outside secret")
+    ws = tmp_path / "workspaces" / "u1"
+    ws.mkdir(parents=True)
+    (ws / "ok.txt").write_text("keep me")
+    if os.name == "nt":
+        subprocess.run(["cmd", "/c", "mklink", "/J", str(ws / "link"), str(outside)], check=True, capture_output=True)
+    else:
+        os.symlink(outside, ws / "link")
+    with tarfile.open(tmp_path / "b.tar.gz", "w:gz") as tar:
+        skipped = ops.add_tree(tar, tmp_path / "workspaces", "workspaces")
+    assert skipped == ["u1/link"] or skipped == [str(Path("u1") / "link")]
+    with tarfile.open(tmp_path / "b.tar.gz") as tar:
+        names = tar.getnames()
+        tar.extractall(tmp_path / "restored", filter="data")  # restorable with the safe filter
+    assert "workspaces/u1/ok.txt" in names and not any("secret" in n or n.endswith("link") for n in names)

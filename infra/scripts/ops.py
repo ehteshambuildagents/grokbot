@@ -45,6 +45,30 @@ def sha256_file(p: Path) -> str:
     return h.hexdigest()
 
 
+def add_tree(tar: tarfile.TarFile, root: Path, arcname: str) -> list[str]:
+    """Archive regular files and directories only. Symlinks, Windows junctions and other reparse points are skipped:
+    following them could copy data from outside the data directory, and archiving them made restores fail (the safe
+    'data' extraction filter rejects links). Found by the Linux CI run."""
+    from localcrew.workspace import is_link
+    skipped = []
+    tar.add(root, arcname=arcname, recursive=False)
+    for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
+        d = Path(dirpath)
+        keep = []
+        for n in dirnames:
+            (skipped if is_link(d / n) else keep).append(d / n)
+        dirnames[:] = [p.name for p in keep]
+        for p in keep:
+            tar.add(p, arcname=f"{arcname}/{p.relative_to(root).as_posix()}", recursive=False)
+        for n in filenames:
+            p = d / n
+            if is_link(p) or not p.is_file() or p.stat().st_nlink > 1:
+                skipped.append(p)
+                continue
+            tar.add(p, arcname=f"{arcname}/{p.relative_to(root).as_posix()}", recursive=False)
+    return [str(p.relative_to(root)) for p in skipped]
+
+
 def backup(dest: Path, include_browser=False):
     from localcrew.config import settings
     s = settings()
@@ -54,7 +78,9 @@ def backup(dest: Path, include_browser=False):
     with tarfile.open(dest / "data.tar.gz", "w:gz") as tar:
         for sub in ["workspaces", "artifacts"] + (["browser-profiles"] if include_browser else []):
             if (s.data_dir / sub).exists():
-                tar.add(s.data_dir / sub, arcname=sub)
+                skipped = add_tree(tar, s.data_dir / sub, sub)
+                for p in skipped:
+                    print(f"  skipped link (not backed up): {p}")
     if s.secret_key_file.exists():
         shutil.copy2(s.secret_key_file, dest / "secrets.key")
     from sqlalchemy import create_engine, text
