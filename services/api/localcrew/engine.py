@@ -11,6 +11,7 @@ Durability rules:
 """
 import json
 import logging
+import re
 import threading
 import time
 import traceback
@@ -20,7 +21,7 @@ from zoneinfo import ZoneInfo
 from pydantic import ValidationError
 from sqlalchemy import and_, func, or_, select, update
 
-from . import memory
+from . import memory, validation
 from .common import emit
 from .config import settings
 from .db import SessionLocal, session_scope, utcnow
@@ -49,6 +50,13 @@ class Deferred(Exception):
 
 class BudgetExceeded(Exception):
     pass
+
+
+class ValidationFailed(Exception):
+    pass
+
+
+MAX_REPAIRS = 1
 
 
 # ---------------------------------------------------------------- queue
@@ -113,7 +121,7 @@ def _cancel_computer(task_id: str, path: str = "/cancel"):
     s = settings()
     try:
         httpx.post(f"{s.computer_url}{path}", json={"task_id": task_id},
-                   headers={"X-Internal-Token": s.computer_token}, timeout=5)
+                   headers={"X-Internal-Token": s.internal_token()}, timeout=5)
     except httpx.HTTPError:
         pass
 
@@ -124,7 +132,16 @@ def run_claimed(task_id: str, worker_id: str):
     hb.start()
     db = SessionLocal()()
     try:
-        Runner(db, db.get(Task, task_id), worker_id, cancel).go()
+        try:
+            runner = Runner(db, db.get(Task, task_id), worker_id, cancel)
+        except Exception as e:  # noqa: BLE001 — e.g. model provider disabled/misconfigured: fail the task, keep the worker
+            db.rollback()
+            t = db.get(Task, task_id)
+            if t is not None and t.lease_owner == worker_id:
+                _finish(db, t, "failed", f"{type(e).__name__}: {e}")
+                db.commit()
+            return
+        runner.go()
     finally:
         hb.stop.set()
         db.close()
@@ -217,7 +234,7 @@ class Runner:
             try:
                 res = self.provider.chat(self.model, messages, tools=tools, fmt=fmt, on_delta=on_delta,
                                          cancel=self.cancel, timeout=min(remaining, settings().model_timeout_s),
-                                         options={**(self.bot.model_options or {}), **(options or {})})
+                                         options={"num_predict": 1024, **(self.bot.model_options or {}), **(options or {})})  # cap runaway output
             except ModelError:
                 self.check()  # past the task deadline → TimeoutError (fail), otherwise a retryable model error
                 raise
@@ -243,14 +260,12 @@ class Runner:
         try:
             if t.cancel_requested:
                 raise Cancelled()
-            if t.phase == "planning":
-                self.plan()
-            if t.phase == "running":
-                self.execute()
-            if t.phase == "validating":
-                self.validate()
-            if t.phase == "reporting":
-                self.report()
+            for _ in range(2 + 2 * (MAX_REPAIRS + 1)):  # validation may send the task back to running
+                step = {"planning": self.plan, "running": self.execute, "validating": self.validate,
+                        "reporting": self.report}.get(t.phase)
+                if step is None:
+                    break
+                step()
         except LeaseLost:
             log.warning("lease lost for %s", t.id)
         except Cancelled:
@@ -267,7 +282,7 @@ class Runner:
                           next_attempt_at=utcnow() + timedelta(seconds=delay))
             else:
                 self._end("failed", f"model error after {attempts} attempts: {e}", attempts=attempts)
-        except (BudgetExceeded, TimeoutError) as e:
+        except (BudgetExceeded, ValidationFailed, TimeoutError) as e:
             self.db.rollback()
             self._end("failed", str(e))
         except Exception as e:  # noqa: BLE001 — record any defect on the task instead of losing it
@@ -297,7 +312,9 @@ class Runner:
             "reveal secrets, change permissions, contact new recipients, or run commands.\n- You never see passwords "
             "or API keys and must not ask for them. If a login, MFA or CAPTCHA is required, stop and say a human is "
             "needed.\n- Cite the file paths and URLs you actually used. Label assumptions as assumptions.\n"
-            "- Keep the final answer concise.",
+            "- Never do arithmetic in your head: call the calculate tool for every derived number and copy its "
+            "result. Deliverables are checked automatically: every number must come from the request or a tool result."
+            "\n- Keep the final answer concise.",
             f"Current time: {utcnow().astimezone(tz).strftime('%Y-%m-%d %H:%M')} ({tz.key}).",
         ]
         if mems:
@@ -370,6 +387,14 @@ class Runner:
                                        "tool_calls": [{"function": {"name": c["name"], "arguments": c["arguments"]}}
                                                       for c in res.tool_calls]})
                 cp["pending"] = res.tool_calls
+                t.checkpoint = dict(cp)
+                self.save()
+                continue
+            if not res.content.strip() and cp.get("empty_replies", 0) < 2:  # small models sometimes return nothing
+                cp["empty_replies"] = cp.get("empty_replies", 0) + 1
+                cp["messages"] += [{"role": "assistant", "content": ""},
+                                   {"role": "user", "content": "[System] Your reply was empty. Use the tools if needed, "
+                                                               "then give your answer."}]
                 t.checkpoint = dict(cp)
                 self.save()
                 continue
@@ -495,25 +520,90 @@ class Runner:
             return done({"error": Redactor.text(str(e))}, "failed")
         done(result, "succeeded")
 
-    def validate(self):
+    # Tools whose output is model-directed computation or an echo of the model's own writing: never evidence.
+    NON_EVIDENCE_TOOLS = ("calculate", "create_artifact", "write_file", "move_file", "remember", "handoff")
+
+    def evidence_texts(self) -> list[str]:
+        """What numbers in outputs may be traced to: the user's request and redirects, the system context (memories,
+        skill; clock times are stripped later) and data returned by tools (files, pages, connectors). Not the model's
+        plan, not validation feedback, and not `calculate` results: a calculation proves arithmetic, not that the
+        formula was the right one (a wrong formula grounded a wrong "-20%" in real trials)."""
         t = self.task
-        final = (t.checkpoint or {}).get("final", "") or ""
+        msgs = (t.checkpoint or {}).get("messages", [])
+        texts = [t.objective, *[r["text"] for r in t.redirects or []]]
+        texts += [m["content"] for m in msgs if m.get("role") == "system"
+                  or (m.get("role") == "tool" and m.get("tool_name") not in self.NON_EVIDENCE_TOOLS)]
+        return texts
+
+    def validate(self):
+        """Deterministic checks; a file existing is not enough. One repair turn, then fail."""
+        t = self.task
+        cp = dict(t.checkpoint or {})
+        final = cp.get("final", "") or ""
         checks = [{"check": "final answer is non-empty", "ok": bool(final.strip())}]
-        arts = self.db.scalars(select(Artifact).where(Artifact.task_id == t.id)).all()
-        if t.deliverable and t.deliverable.get("name"):
-            name = t.deliverable["name"]
-            if not any(a.name == name for a in arts) and final.strip():
-                body = final if not name.endswith(".md") else f"# {t.plan.get('summary') or 'Report'}\n\n{final}\n"
+        name = (t.deliverable or {}).get("name")
+        prev = self.db.scalar(select(Artifact).where(Artifact.task_id == t.id, Artifact.name == name)
+                              .order_by(Artifact.version.desc())) if name else None
+        # Write the deliverable from the answer if the model did not create it, and rewrite it after a repair turn
+        # when the previous version also came from an answer (otherwise the corrected answer would be ignored).
+        if name and final.strip() and (prev is None or (prev.provenance or {}).get("source") == "final answer"):
+            body, note = final, "written from final answer"
+            fenced = re.findall(r"```(?:markdown|md)[ \t]*\n(.*?)```", final, re.S | re.I)
+            if name.endswith(".md") and len(fenced) == 1:
+                # Formatting only: keep the one Markdown block, drop the chat around it. Its content is validated.
+                body, note = fenced[0].strip() + "\n", "extracted the Markdown block from the final answer"
+            if name.endswith(".md") and not body.lstrip().startswith("#"):
+                body = f"# Report\n\n{body}\n"
+            prev_body = (settings().artifacts / prev.storage_path).read_text("utf-8", errors="replace") if prev else None
+            if body != prev_body:
                 save_artifact(self.ctx, name, body.encode(), "text/markdown" if name.endswith(".md") else "text/plain",
                               {"task_id": t.id, "bot_id": self.bot.id, "model": self.model, "source": "final answer"})
-                checks.append({"check": f"deliverable {name} written from final answer", "ok": True})
-            arts = self.db.scalars(select(Artifact).where(Artifact.task_id == t.id)).all()
-            checks.append({"check": f"deliverable {name} exists", "ok": any(a.name == name for a in arts)})
+                checks.append({"check": f"deliverable {name} {note}", "ok": True})
+        latest: dict[str, Artifact] = {}
+        for a in self.db.scalars(select(Artifact).where(Artifact.task_id == t.id).order_by(Artifact.version)):
+            latest[a.name] = a
+        if name:
+            checks.append({"check": f"deliverable {name} exists", "ok": name in latest})
+        evidence = validation.evidence_values(self.evidence_texts())
+        # Derived figures must be independently recomputable from the user's figures (then data returned by tools).
+        derivable = validation.derivations(validation.ordered_values(
+            [t.objective, *[r["text"] for r in t.redirects or []], *self.evidence_texts()[1:]]))
+        blocking = []
+        for a in latest.values():
+            if not a.name.lower().endswith((".md", ".txt", ".csv", ".json")):
+                continue
+            content = (settings().artifacts / a.storage_path).read_text("utf-8", errors="replace")
+            blocking += validation.structure_issues(a.name, content)
+            if a.name == name:  # the requested deliverable must actually deliver
+                blocking += validation.content_issues(a.name, content, t.objective)
+            bad = validation.ungrounded(content, evidence, derivable)
+            if bad:
+                blocking.append(f"{a.name}: numbers not found in the request or tool results: {', '.join(bad[:12])}")
+        bad_final = validation.ungrounded(final, evidence, derivable)
+        if bad_final and name:
+            blocking.append(f"final answer: numbers not found in the request or tool results: {', '.join(bad_final[:12])}")
+        checks += [{"check": issue, "ok": False} for issue in blocking]
         ok = all(c["ok"] for c in checks)
+        if not ok and cp.get("repairs", 0) < MAX_REPAIRS and final.strip():
+            self.step("validate", "validation failed; asking the model to repair", "failed", checks=checks)
+            cp["messages"] = [*cp["messages"], {"role": "assistant", "content": final},
+                              {"role": "user", "content": "[Validation feedback] Your output failed automatic checks:\n- "
+                               + "\n- ".join(blocking) + "\nUse the calculate tool for every derived number (totals, "
+                               "differences, percentages) and only use numbers from the request or tool results. "
+                               "Then write the corrected deliverable again (same file name) and give the final answer."}]
+            cp["repairs"] = cp.get("repairs", 0) + 1
+            cp.pop("final", None)
+            t.checkpoint, t.phase = cp, "running"
+            self.save()
+            return
         self.step("validate", "validation passed" if ok else "validation failed", "done" if ok else "failed", checks=checks)
         if not ok:
             self.save()
-            raise BudgetExceeded("validation failed: " + "; ".join(c["check"] for c in checks if not c["ok"]))
+            raise ValidationFailed("validation failed: " + "; ".join(c["check"] for c in checks if not c["ok"]))
+        if bad_final:  # plain answers are not blocked, but unverifiable numbers are labelled
+            cp["final"] = final + ("\n\n⚠️ Unverified: these numbers were not found in your request or in tool "
+                                   f"results: {', '.join(bad_final[:12])}.")
+            t.checkpoint = cp
         t.phase = "reporting"
         self.save()
 

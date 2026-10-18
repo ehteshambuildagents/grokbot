@@ -1,0 +1,186 @@
+============================= test session starts =============================
+platform win32 -- Python 3.13.15, pytest-9.1.1, pluggy-1.7.0 -- <repo>\.venv\Scripts\python.exe
+rootdir: <repo>
+configfile: pytest.ini
+plugins: anyio-4.15.1
+collecting ... collected 83 items
+
+tests/test_browser.py::test_login_persistence_expiry_and_takeover PASSED [  1%]
+tests/test_browser.py::test_bot_refuses_password_fields_and_captcha PASSED [  2%]
+tests/test_browser.py::test_takeover_revokes_automation_mid_task PASSED  [  3%]
+tests/test_browser.py::test_concurrent_browser_access_serialized PASSED  [  4%]
+tests/test_browser.py::test_cancel_active_browser_navigation PASSED      [  6%]
+tests/test_browser.py::test_demonstration_recording_excludes_password PASSED [  7%]
+tests/test_core.py::test_bot_crud_versions_duplicate_delete PASSED       [  8%]
+tests/test_core.py::test_csrf_and_auth_required PASSED                   [  9%]
+tests/test_core.py::test_cross_user_access_denied PASSED                 [ 10%]
+tests/test_core.py::test_path_traversal_rejected PASSED                  [ 12%]
+tests/test_core.py::test_symlink_escape_rejected SKIPPED (symlink cr...) [ 13%]
+tests/test_core.py::test_ssrf_blocked PASSED                             [ 14%]
+tests/test_core.py::test_unsafe_uploads_rejected PASSED                  [ 15%]
+tests/test_core.py::test_memory_correct_disable_delete PASSED            [ 16%]
+tests/test_core.py::test_bot_private_memory_not_shared PASSED            [ 18%]
+tests/test_core.py::test_task_creates_downloadable_artifact PASSED       [ 19%]
+tests/test_core.py::test_deliverable_written_from_final_answer PASSED    [ 20%]
+tests/test_core.py::test_invalid_tool_args_rejected_before_execution PASSED [ 21%]
+tests/test_core.py::test_approval_card_and_allow_once PASSED             [ 22%]
+tests/test_core.py::test_approval_denied PASSED                          [ 24%]
+tests/test_core.py::test_approval_expired PASSED                         [ 25%]
+tests/test_core.py::test_changed_payload_invalidates_approval PASSED     [ 26%]
+tests/test_core.py::test_persistent_rule_is_narrow_and_org_deny_wins PASSED [ 27%]
+tests/test_core.py::test_ambiguous_write_reconciled_no_duplicate PASSED  [ 28%]
+tests/test_core.py::test_ambiguous_write_after_crash_never_blindly_retried PASSED [ 30%]
+tests/test_core.py::test_prompt_injection_cannot_exfiltrate PASSED       [ 31%]
+tests/test_core.py::test_secrets_encrypted_at_rest_and_redacted PASSED   [ 32%]
+tests/test_core.py::test_handoff_creates_child_with_evidence PASSED      [ 33%]
+tests/test_core.py::test_handoff_loop_prevention PASSED                  [ 34%]
+tests/test_core.py::test_cancel_running_terminal_command PASSED          [ 36%]
+tests/test_core.py::test_redirect_running_task PASSED                    [ 37%]
+tests/test_core.py::test_model_error_retries_with_backoff PASSED         [ 38%]
+tests/test_core.py::test_sse_replay PASSED                               [ 39%]
+tests/test_deliverable_regressions.py::test_embedded_markdown_in_written_file_rejected_then_repaired PASSED [ 40%]
+tests/test_deliverable_regressions.py::test_markdown_block_extracted_from_chatty_answer PASSED [ 42%]
+tests/test_deliverable_regressions.py::test_extracted_block_with_wrong_numbers_still_fails PASSED [ 43%]
+tests/test_deliverable_regressions.py::test_repair_rewrites_answer_derived_deliverable PASSED [ 44%]
+tests/test_deliverable_regressions.py::test_wrong_formula_via_calculate_does_not_ground_a_number PASSED [ 45%]
+tests/test_deliverable_regressions.py::test_percentage_must_recompute_as_percentage PASSED [ 46%]
+tests/test_deliverable_regressions.py::test_commentary_and_language_mismatch_rejected PASSED [ 48%]
+tests/test_extras.py::test_context_compaction_keeps_objective_and_user_constraints PASSED [ 49%]
+tests/test_extras.py::test_browser_download_and_upload PASSED            [ 50%]
+tests/test_extras.py::test_terminal_timeout_env_scrub_and_cwd PASSED     [ 51%]
+tests/test_extras.py::test_shell_requires_approval_by_default PASSED     [ 53%]
+tests/test_extras.py::test_local_files_connector PASSED                  [ 54%]
+tests/test_extras.py::test_skill_from_task_and_approval_gate PASSED      [ 55%]
+tests/test_extras.py::test_routine_failure_notification FAILED           [ 56%]
+tests/test_extras.py::test_task_deadline_enforced PASSED                 [ 57%]
+tests/test_extras.py::test_team_shared_bot_private_conversations PASSED  [ 59%]
+tests/test_extras.py::test_template_export_import_is_sanitized PASSED    [ 60%]
+tests/test_extras.py::test_web_search_reports_unavailable_without_config PASSED [ 61%]
+tests/test_extras.py::test_sse_stream_does_not_hold_a_db_connection PASSED [ 62%]
+tests/test_hardening.py::test_junction_escape_blocked_everywhere PASSED  [ 63%]
+tests/test_hardening.py::test_hardlink_alias_refused PASSED              [ 65%]
+tests/test_hardening.py::test_dns_rebinding_blocked_for_http_client PASSED [ 66%]
+tests/test_hardening.py::test_dns_rebinding_blocked_in_fetch_tool PASSED [ 67%]
+tests/test_hardening.py::test_egress_proxy_pins_resolution PASSED        [ 68%]
+tests/test_hardening.py::test_browser_traffic_goes_through_egress_proxy PASSED [ 69%]
+tests/test_hardening.py::test_terminal_memory_limit PASSED               [ 71%]
+tests/test_hardening.py::test_terminal_large_output_is_drained_and_capped PASSED [ 72%]
+tests/test_hardening.py::test_terminal_process_limit PASSED              [ 73%]
+tests/test_hardening.py::test_terminal_requires_internal_token PASSED    [ 74%]
+tests/test_hardening.py::test_calculator_is_safe_and_exact PASSED        [ 75%]
+tests/test_hardening.py::test_wrong_numbers_trigger_repair_then_success PASSED [ 77%]
+tests/test_hardening.py::test_unrepaired_wrong_numbers_fail_even_though_file_exists PASSED [ 78%]
+tests/test_hardening.py::test_malformed_csv_and_fenced_markdown_rejected PASSED [ 79%]
+tests/test_hardening.py::test_plain_answer_with_unverified_numbers_is_labelled PASSED [ 80%]
+tests/test_hardening.py::test_non_answer_deliverable_is_rejected PASSED  [ 81%]
+tests/test_hardening.py::test_empty_model_reply_is_retried PASSED        [ 83%]
+tests/test_hardening.py::test_wrong_percentage_after_correct_calculation_is_rejected PASSED [ 84%]
+tests/test_hardening.py::test_wrong_returns_increase_is_rejected PASSED  [ 85%]
+tests/test_ops.py::test_backup_restore_into_clean_environment PASSED     [ 86%]
+tests/test_ops.py::test_key_rotation_keeps_secrets_readable PASSED       [ 87%]
+tests/test_ops.py::test_qa_workflow_reproduce_report_and_ask_before_submit PASSED [ 89%]
+tests/test_processes.py::test_bot_persists_across_api_restart PASSED     [ 90%]
+tests/test_processes.py::test_scheduled_routine_runs_with_frontend_closed PASSED [ 91%]
+tests/test_processes.py::test_worker_crash_recovers_from_checkpoint PASSED [ 92%]
+tests/test_processes.py::test_missed_runs_policy PASSED                  [ 93%]
+tests/test_processes.py::test_overlap_prevented_and_pause PASSED         [ 95%]
+tests/test_processes.py::test_dst_and_timezones PASSED                   [ 96%]
+tests/test_processes.py::test_webhook_auth_and_dedup PASSED              [ 97%]
+tests/test_realmodel.py::test_real_model_report_is_correct_or_rejected FAILED [ 98%]
+tests/test_realmodel.py::test_real_ollama_cancellation_stops_generation FAILED [100%]
+
+================================== FAILURES ===================================
+______________________ test_routine_failure_notification ______________________
+
+client = <conftest.Client object at 0x0000015B7638EF90>
+
+    def test_routine_failure_notification(client):
+        set_scripts({"fail": [{"content": ""}]})  # empty answer → validation fails → task failed
+        bot = client.bot(model="scripted:fail")
+        r = client.ok("post", "/api/routines", status=201, json={"name": "Nightly", "bot_id": bot["id"], "prompt": "p",
+                                                                  "schedule_text": "every day at 2am", "confirmed": True})
+        run = client.ok("post", f"/api/routines/{r['id']}/run-now")
+        drain()
+        t = client.task(run["task_id"])
+>       assert t["status"] == "failed" and "validation failed" in t["error"]
+E       AssertionError: assert ('succeeded' == 'failed'
+E         
+E         - failed
+E         + succeeded)
+
+tests\test_extras.py:125: AssertionError
+________________ test_real_model_report_is_correct_or_rejected ________________
+
+client = <conftest.Client object at 0x0000015B76B3AC10>
+
+    def test_real_model_report_is_correct_or_rejected(client):
+        """End to end with the real model: task → tools → validation → downloadable report.
+        A report may only succeed if it passes structure and numeric-grounding validation; the growth figure must be
+        the correct 12.5%. A wrong report must end as `failed` (never `succeeded` because a file exists)."""
+        from localcrew import validation
+        bot = client.bot("Atlas", model=MODEL, tools=["create_artifact", "calculate"])
+        tid, _ = client.say(bot, "Write a short sales report in markdown. Data: September sales 120, October sales 135. "
+                                 "Include the percentage change in sales and one recommendation.", deliverable="sales-report.md")
+        drain()
+        t = client.task(tid)
+        print("\nstatus:", t["status"], "| error:", t["error"][:300])
+        if t["status"] == "succeeded":
+            art = max((a for a in t["artifacts"] if a["name"] == "sales-report.md"), key=lambda a: a["version"])
+            body = client.get(art["url"]).text
+            print(body)
+            assert "12.5" in body, "succeeded without the correct growth figure"
+            assert validation.structure_issues("sales-report.md", body) == []
+            assert art["provenance"]["task_id"] == tid
+        else:
+>           assert t["status"] == "failed" and t["error"].startswith("validation failed"), t["error"]
+E           AssertionError: task deadline exceeded
+E           assert ('failed' == 'failed'
+E             
+E               failed and False)
+E            +  where False = <built-in method startswith of str object at 0x0000015B76B24CF0>('validation failed')
+E            +    where <built-in method startswith of str object at 0x0000015B76B24CF0> = 'task deadline exceeded'.startswith
+
+tests\test_realmodel.py:47: AssertionError
+---------------------------- Captured stdout call -----------------------------
+
+status: failed | error: task deadline exceeded
+_______________ test_real_ollama_cancellation_stops_generation ________________
+
+    def test_real_ollama_cancellation_stops_generation():
+        """Cancel during prompt evaluation of a long, never-seen prompt; Ollama must stop (follow-up is not queued)."""
+        from localcrew.llm import Cancelled, OllamaProvider
+        p = OllamaProvider()
+        p.chat(MODEL, [{"role": "user", "content": "hi"}], options={"num_predict": 1})  # model loaded
+        nonce = uuid.uuid4().hex  # defeats Ollama's prompt cache so the cancel lands in prompt evaluation
+        long = f"[{nonce}] Summarize this log:\n" + "\n".join(f"line {i}: ok latency {i % 97} ms" for i in range(1500))
+        cancel = threading.Event()
+        threading.Timer(1.5, cancel.set).start()
+        t0 = time.monotonic()
+        with pytest.raises(Cancelled):
+            p.chat(MODEL, [{"role": "user", "content": long}], cancel=cancel, options={"num_predict": 2000, "num_ctx": 8192})
+        took = time.monotonic() - t0
+        t1 = time.monotonic()
+        p.chat(MODEL, [{"role": "user", "content": "Say OK"}], options={"num_predict": 3})
+        follow = time.monotonic() - t1
+        print(f"\ncancelled after {took:.2f}s; follow-up request {follow:.2f}s")
+>       assert took < 5 and follow < 15
+E       assert (6446.75321710002 < 5)
+
+tests\test_realmodel.py:68: AssertionError
+---------------------------- Captured stdout call -----------------------------
+
+cancelled after 6446.75s; follow-up request 22.98s
+============================ slowest 10 durations =============================
+6470.76s call     tests/test_realmodel.py::test_real_ollama_cancellation_stops_generation
+2229.01s call     tests/test_realmodel.py::test_real_model_report_is_correct_or_rejected
+59.69s call     tests/test_processes.py::test_scheduled_routine_runs_with_frontend_closed
+27.29s call     tests/test_browser.py::test_login_persistence_expiry_and_takeover
+15.52s call     tests/test_browser.py::test_bot_refuses_password_fields_and_captcha
+15.43s call     tests/test_processes.py::test_worker_crash_recovers_from_checkpoint
+12.24s call     tests/test_browser.py::test_demonstration_recording_excludes_password
+10.09s call     tests/test_extras.py::test_browser_download_and_upload
+10.07s call     tests/test_ops.py::test_backup_restore_into_clean_environment
+9.65s call     tests/test_browser.py::test_takeover_revokes_automation_mid_task
+=========================== short test summary info ===========================
+SKIPPED [1] tests\test_core.py:69: symlink creation not permitted on this host (Windows without developer mode)
+============ 3 failed, 79 passed, 1 skipped in 9056.02s (2:30:56) =============

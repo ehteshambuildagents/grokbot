@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import type { Bot, User } from "./api";
 
 export type Ctx = {
@@ -18,11 +18,12 @@ export class EventBus {
   on(l: Listener) { this.ls.add(l); return () => { this.ls.delete(l); }; }
   emit(e: Parameters<Listener>[0]) { this.ls.forEach((l) => l(e)); }
 }
-export function useEvents(l: Listener, deps: unknown[] = []) {
+// Subscribes once; always calls the latest handler (no stale closures, no resubscribe per render).
+export function useEvents(l: Listener) {
   const { events } = useApp();
   const ref = useRef(l);
-  ref.current = l;
-  useEffect(() => events.on((e) => ref.current(e)), [events, ...deps]);
+  useEffect(() => { ref.current = l; });
+  useEffect(() => events.on((e) => ref.current(e)), [events]);
 }
 
 export const cx = (...c: (string | false | null | undefined)[]) => c.filter(Boolean).join(" ");
@@ -137,17 +138,13 @@ export function useLoad<T>(fn: () => Promise<T>, deps: unknown[] = []) {
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
-  const load = async () => {
-    setLoading(true);
-    try {
-      setData(await fn());
-      setError("");
-    } catch (e: any) {
-      setError(e.message ?? String(e));
-    } finally {
-      setLoading(false);
-    }
-  };
-  useEffect(() => { load(); }, deps); // eslint-disable-line
-  return { data, error, loading, reload: load, setData };
+  // `deps` works like a useEffect dependency list; the latest `fn` is kept in a ref (updated before the load effect).
+  const fnRef = useRef(fn);
+  useEffect(() => { fnRef.current = fn; });
+  const key = JSON.stringify(deps);
+  const run = useCallback(() => fnRef.current().then((d) => { setData(d); setError(""); }, (e: any) => setError(e?.message ?? String(e)))
+    .finally(() => setLoading(false)), []);
+  useEffect(() => { run(); }, [run, key]);
+  const reload = () => { setLoading(true); return run(); };
+  return { data, error, loading, reload, setData };
 }

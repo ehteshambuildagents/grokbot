@@ -115,7 +115,7 @@ def test_skill_from_task_and_approval_gate(client):
 
 
 def test_routine_failure_notification(client):
-    set_scripts({"fail": [{"content": ""}]})  # empty answer → validation fails → task failed
+    set_scripts({"fail": [{"content": ""}] * 3})  # stays empty after the 2 empty-reply nudges → validation fails
     bot = client.bot(model="scripted:fail")
     r = client.ok("post", "/api/routines", status=201, json={"name": "Nightly", "bot_id": bot["id"], "prompt": "p",
                                                               "schedule_text": "every day at 2am", "confirmed": True})
@@ -175,3 +175,27 @@ def test_web_search_reports_unavailable_without_config(client):
     tid, _ = client.say(bot, "search")
     drain()
     assert client.task(tid)["tool_calls"][0]["result"]["available"] is False
+
+
+def test_sse_stream_does_not_hold_a_db_connection(client):
+    """An open event stream must not keep a pooled connection 'idle in transaction' (pool exhaustion)."""
+    import threading
+    import time
+
+    from localcrew.db import engine
+    from sqlalchemy import text
+    stop = threading.Event()
+
+    def listen():
+        with client.c.stream("GET", "/api/events?after=-1") as r:
+            for _ in r.iter_lines():
+                if stop.is_set():
+                    break
+    th = threading.Thread(target=listen, daemon=True)
+    th.start()
+    time.sleep(2)
+    with engine().connect() as c:
+        n = c.execute(text("select count(*) from pg_stat_activity where datname = current_database() "
+                           "and state = 'idle in transaction' and query ilike '%auth_sessions%'")).scalar()
+    stop.set()
+    assert n == 0

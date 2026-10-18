@@ -1,6 +1,5 @@
 """API areas: files, approvals, policy, memory, skills, routines, webhooks, connections, computer, teams,
 models, diagnostics, audit."""
-import base64
 import io
 import json
 import secrets
@@ -25,8 +24,24 @@ from .connectors import OPTIONAL, REGISTRY, describe
 from .db import get_db, utcnow
 from .llm import OllamaProvider
 from .models import (
-    ApprovalRequest, AuditEvent, Bot, BrowserSession, Connection, ExecutionLease, Membership, Memory, PolicyRule,
-    Routine, RoutineRun, SecretReference, Skill, SkillVersion, Task, Team, ToolCall, User,
+    ApprovalRequest,
+    AuditEvent,
+    Bot,
+    BrowserSession,
+    Connection,
+    ExecutionLease,
+    Membership,
+    Memory,
+    PolicyRule,
+    Routine,
+    RoutineRun,
+    SecretReference,
+    Skill,
+    SkillVersion,
+    Task,
+    Team,
+    ToolCall,
+    User,
 )
 from .security import hmac_ok, reveal_secret, store_secret
 
@@ -682,7 +697,7 @@ def revoke_connection(cid: str, user: User = Depends(current_user), db: Session 
 def computer(path: str, body: dict, timeout=30):
     s = settings()
     try:
-        r = httpx.post(f"{s.computer_url}{path}", json=body, headers={"X-Internal-Token": s.computer_token}, timeout=timeout)
+        r = httpx.post(f"{s.computer_url}{path}", json=body, headers={"X-Internal-Token": s.internal_token()}, timeout=timeout)
     except httpx.HTTPError as e:
         raise HTTPException(503, f"computer service unavailable: {type(e).__name__}") from e
     if r.status_code >= 400:
@@ -843,9 +858,21 @@ def models(user: User = Depends(current_user)):
             out.append({"name": m, "tools": c.tools, "vision": c.vision, "audio": c.audio, "context_length": c.context_length})
         except Exception as e:  # noqa: BLE001
             out.append({"name": m, "error": str(e)})
-    return {"ollama": h, "models": out, "default": settings().default_model,
-            "remote_providers": {"enabled": settings().remote_providers_enabled, "implemented": False,
-                                 "data_leaving_machine": "none: all inference is local"}}
+    s = settings()
+    from urllib.parse import urlsplit
+
+    from .remote import EGRESS
+    remote_on = bool(s.remote_providers_enabled and s.remote_base_url and s.remote_api_key)
+    if remote_on:
+        for mid in [m.strip() for m in s.remote_models.split(",") if m.strip()]:
+            out.append({"name": f"remote:{mid}", "tools": True, "vision": False, "audio": False,
+                        "context_length": s.remote_context_length, "remote": True})
+    return {"ollama": h, "models": out, "default": s.default_model,
+            "remote_providers": {"enabled": remote_on, "implemented": True, "kind": "OpenAI-compatible",
+                                 "host": urlsplit(s.remote_base_url).hostname if remote_on else None,
+                                 "data_leaving_machine": ("when a bot uses a remote: model, these go to "
+                                                          f"{urlsplit(s.remote_base_url).hostname}: " + "; ".join(EGRESS))
+                                 if remote_on else "none: remote model APIs are disabled; all inference is local"}}
 
 
 @router.get("/diagnostics")

@@ -4,9 +4,8 @@ import subprocess
 import sys
 
 import httpx
-from sqlalchemy import create_engine, text
-
 from conftest import ENV, FIXTURE, ROOT, TMP, call, drain, set_scripts
+from sqlalchemy import create_engine, text
 
 RESTORE_DB = ENV["LOCALCREW_DATABASE_URL"].rsplit("/", 1)[0] + "/localcrew_restore"
 
@@ -75,10 +74,11 @@ def test_qa_workflow_reproduce_report_and_ask_before_submit(client):
         {"tool_calls": [call("browser_open", url=f"{FIXTURE}/issues")]},
         {"tool_calls": [call("browser_open", url=f"{FIXTURE}/app/calc?a=2&b=2")]},
         {"tool_calls": [call("browser_screenshot")]},
+        {"tool_calls": [call("calculate", expression="2+2")]},  # expected value is derived, so it is computed
         {"tool_calls": [call("create_artifact", name="bug-report.md", content=report)]},
         {"tool_calls": [call("tracker_create_issue", title="Bug: 2+2 returns 5", body=report, labels=["bug"])]},
         {"content": "Bug reproduced; report written and submitted after approval."}]})
-    quill = client.bot("Quill", model="scripted:qa")
+    quill = client.bot("Quill", model="scripted:qa", tools=[*client.bot("Quill")["tools"], "calculate"])
     tid, _ = client.say(quill, "Reproduce the calculator defect and file it")
     drain()
     t = client.task(tid)

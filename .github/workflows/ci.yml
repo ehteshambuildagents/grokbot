@@ -1,0 +1,79 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    name: Linux tests (pytest + Playwright E2E)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:17.6-bookworm
+        env:
+          POSTGRES_USER: localcrew
+          POSTGRES_PASSWORD: localcrew-dev-only   # CI-only throwaway database
+          POSTGRES_DB: localcrew_test
+        ports: ["54329:5432"]
+        options: >-
+          --health-cmd "pg_isready -U localcrew" --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      PG_BIN: /usr/lib/postgresql/17/bin
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.13" }
+      - uses: actions/setup-node@v4
+        with: { node-version: "24", cache: npm, cache-dependency-path: apps/web/package-lock.json }
+      - name: PostgreSQL 17 client tools (backup/restore test)
+        run: |
+          sudo apt-get update -q && sudo apt-get install -yq postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -yq postgresql-client-17
+      - name: Python dependencies
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install -r services/api/requirements.in -c services/api/requirements.lock ruff==0.17.1
+          .venv/bin/python -m playwright install --with-deps chromium
+      - name: Lint (ruff)
+        run: .venv/bin/ruff check .
+      - name: Backend acceptance tests (real-model test auto-skips without Ollama)
+        run: .venv/bin/python -m pytest -rs
+      - name: Web lint, typecheck, build
+        working-directory: apps/web
+        run: |
+          npm ci
+          npm run lint
+          npm run build
+      - name: Playwright E2E (desktop + phone)
+        working-directory: apps/web
+        run: |
+          npx playwright install --with-deps chromium
+          npx playwright test
+
+  docker:
+    name: Docker Compose smoke test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and start
+        run: |
+          printf 'POSTGRES_PASSWORD=%s\nLOCALCREW_COMPUTER_TOKEN=%s\n' "$(openssl rand -hex 16)" "$(openssl rand -hex 24)" > .env
+          docker compose --env-file .env -f infra/docker-compose.yml up -d --build
+      - name: Wait for API and computer health
+        run: |
+          for i in $(seq 1 90); do curl -fs http://127.0.0.1:8000/api/setup && break; sleep 2; done
+          docker compose --env-file .env -f infra/docker-compose.yml ps
+      - name: Smoke checks inside containers
+        run: bash infra/scripts/docker_smoke.sh
+      - name: Logs on failure
+        if: failure()
+        run: docker compose --env-file .env -f infra/docker-compose.yml logs --tail 200

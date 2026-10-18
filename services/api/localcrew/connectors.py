@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from . import workspace
 from .models import Connection
-from .security import Redactor, reveal_secret
+from .security import Redactor, reveal_secret, safe_http_client
 
 
 class Ambiguous(Exception):
@@ -106,8 +106,8 @@ class FixtureTracker(Connector):
 
     def _client(self):
         token = reveal_secret(self.db, self.conn.secret_id, self.conn.owner_user_id)
-        return httpx.Client(base_url=self.conn.config["base_url"], timeout=10,
-                            headers={"Authorization": f"Bearer {token}"})
+        return safe_http_client(base_url=self.conn.config["base_url"], timeout=10,
+                                headers={"Authorization": f"Bearer {token}"})
 
     def health(self):
         try:

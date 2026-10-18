@@ -1,11 +1,14 @@
 """Model provider layer. Ollama is the only real provider; remote adapters are not implemented
 (capability matrix: unavailable). The scripted provider is a test MOCK, gated by config."""
+import http.client
 import json
+import socket
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from functools import lru_cache
-from typing import Callable
+from urllib.parse import urlsplit
 
 import httpx
 
@@ -68,41 +71,70 @@ class OllamaProvider:
             body["format"] = fmt
         out, calls, usage = [], [], {}
         deadline = time.monotonic() + (timeout or settings().model_timeout_s)
+        stop, why = threading.Event(), {}
+        u = urlsplit(self.url)
+        conn_cls = http.client.HTTPSConnection if u.scheme == "https" else http.client.HTTPConnection
+        conn = conn_cls(u.hostname, u.port or (443 if u.scheme == "https" else 80), timeout=60)
+
+        def watchdog():
+            """Cancellation/deadline must also work while Ollama is still evaluating the prompt (it sends no
+            headers until the first token): shut the socket down. Ollama aborts generation on disconnect."""
+            while not stop.wait(0.2):
+                if (cancel is not None and cancel.is_set()) or time.monotonic() > deadline:
+                    why["reason"] = "cancel" if cancel is not None and cancel.is_set() else "timeout"
+                    try:
+                        conn.sock.shutdown(socket.SHUT_RDWR)
+                    except (OSError, AttributeError):
+                        pass
+                    return
+
         try:
-            with httpx.stream("POST", f"{self.url}/api/chat", json=body,
-                              timeout=httpx.Timeout(60, read=120)) as r:
-                if r.status_code >= 400:
-                    r.read()
-                    raise ModelError(f"ollama {r.status_code}: {r.text[:300]}")
-                for line in r.iter_lines():
-                    if cancel is not None and cancel.is_set():
-                        raise Cancelled()
-                    if time.monotonic() > deadline:
-                        raise ModelError("model timeout")
-                    if not line:
-                        continue
-                    chunk = json.loads(line)
-                    if chunk.get("error"):
-                        raise ModelError(chunk["error"])
-                    msg = chunk.get("message") or {}
-                    if msg.get("content"):
-                        out.append(msg["content"])
-                        if on_delta:
-                            on_delta(msg["content"])
-                    for tc in msg.get("tool_calls") or []:
-                        fn = tc.get("function", {})
-                        args = fn.get("arguments")
-                        if isinstance(args, str):
-                            try:
-                                args = json.loads(args)
-                            except json.JSONDecodeError:
-                                args = {"_raw": args}
-                        calls.append({"name": fn.get("name"), "arguments": args or {}})
-                    if chunk.get("done"):
-                        usage = {k: chunk.get(k) for k in ("prompt_eval_count", "eval_count", "total_duration",
-                                                           "eval_duration") if k in chunk}
-        except httpx.HTTPError as e:
-            raise ModelError(f"ollama unreachable: {e}") from e
+            conn.connect()
+            conn.sock.settimeout(None)  # the watchdog enforces cancellation and the deadline
+            threading.Thread(target=watchdog, daemon=True).start()
+            conn.request("POST", "/api/chat", body=json.dumps(body), headers={"Content-Type": "application/json"})
+            r = conn.getresponse()
+            if r.status >= 400:
+                raise ModelError(f"ollama {r.status}: {r.read(300).decode('utf-8', 'replace')}")
+            while not why:
+                line = r.readline()
+                if not line:
+                    break
+                line = line.strip()
+                if not line:
+                    continue
+                chunk = json.loads(line)
+                if chunk.get("error"):
+                    if why:  # Ollama reports our own disconnect as "context canceled"
+                        break
+                    raise ModelError(chunk["error"])
+                msg = chunk.get("message") or {}
+                if msg.get("content"):
+                    out.append(msg["content"])
+                    if on_delta:
+                        on_delta(msg["content"])
+                for tc in msg.get("tool_calls") or []:
+                    fn = tc.get("function", {})
+                    args = fn.get("arguments")
+                    if isinstance(args, str):
+                        try:
+                            args = json.loads(args)
+                        except json.JSONDecodeError:
+                            args = {"_raw": args}
+                    calls.append({"name": fn.get("name"), "arguments": args or {}})
+                if chunk.get("done"):
+                    usage = {k: chunk.get(k) for k in ("prompt_eval_count", "eval_count", "total_duration",
+                                                       "eval_duration") if k in chunk}
+        except (OSError, http.client.HTTPException, ValueError) as e:
+            if not why:
+                raise ModelError(f"ollama unreachable or bad response: {e}") from e
+        finally:
+            stop.set()
+            conn.close()
+        if why.get("reason") == "cancel":
+            raise Cancelled()
+        if why.get("reason") == "timeout":
+            raise ModelError("model timeout")
         return ChatResult("".join(out), calls, usage)
 
 
@@ -169,8 +201,10 @@ def provider_for(model: str):
         if not settings().allow_scripted_model:
             raise ValueError("scripted MOCK model is disabled")
         return ScriptedProvider()
-    if "/" in model.split(":")[0] and model.split("/")[0] in ("openai", "anthropic", "remote"):
-        raise ValueError("remote providers are not implemented; see docs/MODELS.md")
+    if model.startswith("remote:"):
+        from .remote import OpenAICompatibleProvider, check_config
+        check_config()  # disabled/unconfigured → clear error, task fails instead of silently going local
+        return OpenAICompatibleProvider()
     return OllamaProvider()
 
 

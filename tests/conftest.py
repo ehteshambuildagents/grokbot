@@ -116,11 +116,10 @@ class Client:
 
     def __init__(self, email=None):
         from fastapi.testclient import TestClient
-        from localcrew.api import app
+        from localcrew.api import SEED_BOTS, app, make_bot
         from localcrew.db import session_scope
         from localcrew.models import User
         from localcrew.security import hash_password
-        from localcrew.api import SEED_BOTS, make_bot
         self.c = TestClient(app)
         n = next(_users)
         self.email = email or f"user{n}-{time.time_ns()}@example.test"

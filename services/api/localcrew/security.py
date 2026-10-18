@@ -9,6 +9,8 @@ import socket
 from datetime import timedelta
 from urllib.parse import urlsplit
 
+import httpcore
+import httpx
 from argon2 import PasswordHasher
 from argon2.exceptions import VerificationError
 from cryptography.fernet import Fernet, InvalidToken, MultiFernet
@@ -158,25 +160,60 @@ def looks_like_credential(s: str) -> bool:
 
 
 # ---------- SSRF guard ----------
+# Destinations must be globally routable unless "host:port" is explicitly allowlisted (test fixtures).
+# DNS-rebinding defence: resolve once, validate, and connect to exactly the validated address
+# (pinned httpx backend below; the computer service routes Chromium through an equivalent pinning proxy).
+
+def _allowlist() -> set[str]:
+    return {h.strip().lower() for h in settings().private_host_allowlist.split(",") if h.strip()}
+
+
+def _blocked(ip: ipaddress._BaseAddress) -> bool:
+    if ip.version == 6 and ip.ipv4_mapped:
+        ip = ip.ipv4_mapped
+    return not ip.is_global or ip.is_multicast
+
+
+def resolve_checked(host: str, port: int) -> list[str]:
+    """Resolve once; return addresses to connect to, or raise ValueError if any address is internal."""
+    host = host.strip("[]").lower()
+    if f"{host}:{port}" in _allowlist():
+        return [host]
+    try:
+        infos = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
+    except socket.gaierror as e:
+        raise ValueError(f"cannot resolve {host}") from e
+    ips = list(dict.fromkeys(info[4][0] for info in infos))
+    for ip in ips:
+        if _blocked(ipaddress.ip_address(ip.split("%")[0])):
+            raise ValueError(f"blocked private/internal address {ip} for {host}")
+    return ips
+
 
 def check_url(url: str) -> str:
-    """Return normalized URL or raise ValueError when it targets a disallowed address."""
+    """Return the URL or raise ValueError when it targets a disallowed scheme or address."""
     u = urlsplit(url)
     if u.scheme not in ("http", "https") or not u.hostname:
         raise ValueError("only http(s) URLs are allowed")
-    hostport = f"{u.hostname}:{u.port or (443 if u.scheme == 'https' else 80)}"
-    allow = {h.strip() for h in settings().private_host_allowlist.split(",") if h.strip()}
-    if hostport in allow:
-        return url
-    try:
-        infos = socket.getaddrinfo(u.hostname, None)
-    except socket.gaierror as e:
-        raise ValueError(f"cannot resolve {u.hostname}") from e
-    for info in infos:
-        ip = ipaddress.ip_address(info[4][0])
-        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast or ip.is_unspecified:
-            raise ValueError(f"blocked private/internal address {ip} for {u.hostname}")
+    resolve_checked(u.hostname, u.port or (443 if u.scheme == "https" else 80))
     return url
+
+
+class _PinnedBackend(httpcore.SyncBackend):
+    def connect_tcp(self, host, port, timeout=None, local_address=None, socket_options=None):
+        try:
+            ips = resolve_checked(host, port)
+        except ValueError as e:
+            raise httpcore.ConnectError(str(e)) from e
+        # TLS server name / certificate checks still use the original host name (httpcore passes it separately).
+        return super().connect_tcp(ips[0], port, timeout, local_address, socket_options)
+
+
+def safe_http_client(**kw) -> httpx.Client:
+    """httpx client that can only reach validated addresses, re-checked on every connection (incl. redirects)."""
+    transport = httpx.HTTPTransport()
+    transport._pool._network_backend = _PinnedBackend()  # httpcore 1.0.x; covered by test_dns_rebinding_*
+    return httpx.Client(transport=transport, **kw)
 
 
 def hmac_ok(secret: str, msg: bytes, sig: str) -> bool:

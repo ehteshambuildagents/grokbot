@@ -1,6 +1,7 @@
 # Models and hardware guidance
 
-All inference is local through Ollama. No remote provider is implemented, so nothing leaves the machine.
+By default all inference is local through Ollama and nothing leaves the machine. Optionally, bots can use a hosted
+model through any **OpenAI-compatible API** (see "Hosted model APIs" below); that is off until you enable it.
 
 ## What was actually tested (2026-10-18)
 
@@ -66,5 +67,49 @@ Firewall that address from other hosts. Never publish 11434 to a LAN or the inte
 - `Caps.tools == False` → the task runs without tools and says so in its progress text.
 - `Caps.vision == False` (all tested models) → screenshots are saved for humans only. They are never described to
   the model as understood. Visual coordinate control is disabled.
-- Remote providers: `provider_for()` refuses `openai/…`, `anthropic/…`, `remote/…` model names. Adding one requires
-  an adapter, an explicit opt-in setting, and a UI disclosure of which data categories leave the machine.
+- `remote:<id>` models go to the configured OpenAI-compatible API. If it is disabled or unconfigured the task fails
+  with that reason; it never silently falls back to another model.
+
+## Hosted model APIs (optional)
+
+`services/api/localcrew/remote.py` implements one adapter for the OpenAI-compatible Chat Completions API (streaming,
+tool calling, JSON mode for planning, cancellation, retries on 429/5xx, no retry on 4xx). It works with any
+provider that offers that API:
+
+| Provider | `LOCALCREW_REMOTE_BASE_URL` | Example model id |
+|---|---|---|
+| OpenAI | `https://api.openai.com/v1` | `gpt-4o-mini` |
+| OpenRouter (many vendors, incl. Anthropic/Google models) | `https://openrouter.ai/api/v1` | `openai/gpt-4o-mini` |
+| Groq | `https://api.groq.com/openai/v1` | a tool-capable model from their list |
+| Together / DeepSeek / Mistral | their OpenAI-compatible endpoint | per provider |
+| LM Studio / vLLM (local servers) | `http://127.0.0.1:<port>/v1` | per server |
+
+Setup (in `.env`, then restart):
+
+```
+LOCALCREW_REMOTE_PROVIDERS_ENABLED=true
+LOCALCREW_REMOTE_BASE_URL=https://api.openai.com/v1
+LOCALCREW_REMOTE_API_KEY=<your key>
+LOCALCREW_REMOTE_MODELS=gpt-4o-mini
+```
+
+Then pick `remote:gpt-4o-mini` in a bot's model list (or set `LOCALCREW_DEFAULT_MODEL=remote:gpt-4o-mini`).
+Settings → "Models & privacy" shows the provider host and exactly which data categories leave the machine.
+
+**What is sent:** bot instructions and role, the conversation/objective, retrieved memories, tool results (web page
+text, workspace file contents, connector data), deliverable drafts. **Never sent:** the API key itself (header only),
+stored secrets, passwords, the secret key file. Plain `http://` is refused except for localhost.
+
+**Costs:** you pay the provider per token. A typical report task here uses 3–6 requests.
+
+**Verification status:** tested only against a local MOCK OpenAI-compatible server
+(`tests/test_remote_provider.py`: streaming with fragmented tool-call arguments, tool-result linking, validation,
+401 without retry, 429 retry, cancellation before the first byte, key never in request bodies or events). It has
+**not** been run against a real provider from this repository (no API key was available). Run the real check with
+your key:
+
+```bash
+LOCALCREW_REMOTE_PROVIDERS_ENABLED=true LOCALCREW_REMOTE_BASE_URL=https://api.openai.com/v1 LOCALCREW_REMOTE_API_KEY=... .venv/Scripts/python tests/eval/report_trials.py 3 remote:gpt-4o-mini
+```
+
+Deliverable validation (numeric grounding, structure, content checks) applies to API models exactly as to local ones.

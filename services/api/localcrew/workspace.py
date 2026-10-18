@@ -1,7 +1,9 @@
 """Per-user shared workspace (all of a user's bots share it). Not a privacy boundary between people:
 each user gets a separate directory and the API checks ownership before touching it."""
 import mimetypes
+import os
 import shutil
+import stat
 from pathlib import Path, PurePosixPath
 
 from .config import settings
@@ -13,6 +15,20 @@ MAX_READ = 200_000
 
 class PathError(ValueError):
     pass
+
+
+def is_link(p: Path) -> bool:
+    """Symlinks, Windows junctions and any other reparse point count as links and are never followed."""
+    try:
+        st = os.lstat(p)
+    except FileNotFoundError:
+        return False
+    return stat.S_ISLNK(st.st_mode) or bool(getattr(st, "st_file_attributes", 0) & stat.FILE_ATTRIBUTE_REPARSE_POINT)
+
+
+def _inside(base: Path, p: Path) -> bool:
+    r = p.resolve()
+    return r == base or base in r.parents
 
 
 def root(user_id: str) -> Path:
@@ -32,13 +48,15 @@ def resolve(user_id: str, rel: str, must_exist: bool = False) -> Path:
         if part in ("", "."):
             continue
         cur = cur / part
-        if cur.is_symlink():
-            raise PathError(f"symlinks are not allowed: {rel!r}")
+        if is_link(cur):
+            raise PathError(f"links (symlinks/junctions) are not allowed: {rel!r}")
     final = cur.resolve()
-    if final != base and base not in final.parents:
+    if not _inside(base, final):
         raise PathError(f"path escapes workspace: {rel!r}")
     if must_exist and not final.exists():
         raise PathError(f"not found: {rel!r}")
+    if final.is_file() and final.stat().st_nlink > 1:
+        raise PathError(f"hard-linked files are not allowed: {rel!r}")  # could alias data outside the workspace
     return final
 
 
@@ -50,7 +68,7 @@ def list_dir(user_id: str, rel: str = "") -> list[dict]:
     d = resolve(user_id, rel, must_exist=True)
     out = []
     for c in sorted(d.iterdir()):
-        if c.name == VERSIONS or c.is_symlink():
+        if c.name == VERSIONS or is_link(c):
             continue
         st = c.stat()
         out.append({"path": rel_of(user_id, c), "name": c.name, "dir": c.is_dir(), "size": st.st_size,
@@ -96,22 +114,26 @@ def move(user_id: str, src: str, dst: str) -> dict:
 
 def search(user_id: str, query: str, limit: int = 50) -> list[dict]:
     base, q, hits = root(user_id), query.lower(), []
-    for p in base.rglob("*"):
-        if VERSIONS in p.parts or p.is_symlink() or not p.is_file() or p.stat().st_size > 2_000_000:
-            continue
-        rel = rel_of(user_id, p)
-        if q in rel.lower():
-            hits.append({"path": rel, "line": 0, "text": "(name match)"})
-            continue
-        try:
-            for i, line in enumerate(p.read_text("utf-8").splitlines(), 1):
-                if q in line.lower():
-                    hits.append({"path": rel, "line": i, "text": line[:200]})
-                    break
-        except (UnicodeDecodeError, OSError):
-            pass
-        if len(hits) >= limit:
-            break
+    for dirpath, dirnames, filenames in os.walk(base, followlinks=False):
+        d = Path(dirpath)
+        dirnames[:] = [n for n in dirnames if n != VERSIONS and not is_link(d / n)]  # never descend into links
+        for name in filenames:
+            p = d / name
+            if is_link(p) or not _inside(base, p) or p.stat().st_nlink > 1 or p.stat().st_size > 2_000_000:
+                continue
+            rel = rel_of(user_id, p)
+            if q in rel.lower():
+                hits.append({"path": rel, "line": 0, "text": "(name match)"})
+            else:
+                try:
+                    for i, line in enumerate(p.read_text("utf-8").splitlines(), 1):
+                        if q in line.lower():
+                            hits.append({"path": rel, "line": i, "text": line[:200]})
+                            break
+                except (UnicodeDecodeError, OSError):
+                    pass
+            if len(hits) >= limit:
+                return hits
     return hits
 
 

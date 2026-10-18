@@ -1,6 +1,7 @@
 # Capability matrix
 
-Status as of 2026-10-18 on the development host (Windows 11, i7-1265U, 15.6 GB RAM, no GPU, no Docker).
+Status as of 2026-10-18 (verification pass 2) on the development host (Windows 11, i7-1265U, 15.6 GB RAM, no GPU,
+no Docker/WSL). Linux/Docker rows marked **CI** are verified only by the GitHub Actions run named in TEST_REPORT.
 Statuses:
 
 - **Tested**: implemented and covered by an automated test that passed on this host (test named).
@@ -19,6 +20,7 @@ engine, policy and tool mechanics, not model quality. Real-model results are in 
 | First-run setup, login, logout, DB-backed sessions (HttpOnly, SameSite=Strict) | Tested | `test_csrf_and_auth_required`, E2E login |
 | CSRF header check, Origin check on mutations | Tested | `test_csrf_and_auth_required` |
 | Login rate limit (10 failures / 5 min / IP) | Unverified | in-memory, per API process |
+| No hard-coded internal token (random per install) | Tested | `test_terminal_requires_internal_token`; token file created on first use |
 | Bind to localhost by default | Tested | launcher + compose bind `127.0.0.1` |
 | TLS / remote access | Config | needs a reverse proxy and `LOCALCREW_SECURE_COOKIES=true` (docs/OPERATIONS.md) |
 | Bot create/edit/version/pin/hide/duplicate/delete with impact report | Tested | `test_bot_crud_versions_duplicate_delete` |
@@ -42,12 +44,12 @@ engine, policy and tool mechanics, not model quality. Real-model results are in 
 | Tool-call budget; handoff depth/dedup/budget limits | Tested | `test_handoff_loop_prevention` |
 | Per-user and model concurrency limits | Unverified | per-user limit 2 running tasks; model semaphore = 1 |
 | Cancellation into terminal subprocess trees and browser navigation | Tested | `test_cancel_running_terminal_command`, `test_cancel_active_browser_navigation` |
-| Cancellation of an in-flight Ollama generation | Unverified | stops at next streamed token; long prompt evaluation is not interruptible |
+| Cancellation of an in-flight Ollama generation (also during prompt evaluation) | **Known failure** | Worked with `qwen2.5:1.5b` in direct checks (~1.5 s, follow-up not queued). In the final regression `test_real_ollama_cancellation_stops_generation` **failed with `qwen2.5:3b`**: cancel took 6,447 s on a heavily loaded host. Root cause not yet found (BACKLOG #1) |
 | User redirect of running work | Tested | `test_redirect_running_task` |
 | Persisted SSE event stream with replay (`Last-Event-ID`, `after=`) | Tested | `test_sse_replay`; live stream drives the E2E chat test |
 | Tool argument schema validation before execution | Tested | `test_invalid_tool_args_rejected_before_execution` |
 | Idempotency keys + reconciliation of ambiguous external writes (no blind retry) | Tested | `test_ambiguous_write_reconciled_no_duplicate`, `…after_crash_never_blindly_retried` |
-| Interrupted shell command → ask the user (never auto re-run) | Unverified | code path in `engine.handle_call` |
+| Interrupted shell command → ask the user (never auto re-run) | Unverified | code path in `engine.handle_call`; no dedicated test yet |
 | Context bounding (deterministic compaction keeping objective + user constraints) | Tested | `test_context_compaction_keeps_objective_and_user_constraints` |
 
 ## Models
@@ -55,10 +57,13 @@ engine, policy and tool mechanics, not model quality. Real-model results are in 
 | Capability | Status | Evidence / notes |
 |---|---|---|
 | Ollama provider: streaming, tool calling, JSON-schema structured output, usage, capability detection | Tested | `tests/eval/model_eval.py`, `test_real_model_report` |
-| Real local-model task producing a downloadable report | Tested | `test_real_model_report` (qwen2.5:1.5b); content quality is weak, see TEST_REPORT |
+| Real local-model task producing a **validated** downloadable report | Partially verified | Real trials succeeded in some runs and validation rejected wrong reports (TEST_REPORT); in the final regression `test_real_model_report_is_correct_or_rejected` **failed: task deadline (30 min) exceeded** with `qwen2.5:3b` on the loaded host. Final validator version not re-trialed |
+| Deterministic `calculate` tool (AST whitelist) | Tested | `test_calculator_is_safe_and_exact` |
+| Output validation: structure, non-answers, numeric grounding + recomputation, one repair turn, fail otherwise | Tested | `test_wrong_numbers_trigger_repair_then_success`, `test_unrepaired_wrong_numbers_fail_even_though_file_exists`, `test_wrong_percentage_after_correct_calculation_is_rejected`, `test_non_answer_deliverable_is_rejected`, `test_embedded_markdown_block_rejected_then_repaired` |
+| Completeness / prose quality of deliverables | Unavailable | validation checks what is present (numbers, structure), not whether every requested element is covered |
 | Unsupported capability detection (no tools → answer without tools; vision flag) | Unverified | both installed models report `tools`; no non-tool model installed |
 | Vision / screenshot understanding | Unavailable | no vision model tested; screenshots are never described to the model |
-| Optional remote providers | Unavailable | not implemented; nothing leaves the machine |
+| Hosted model APIs (any OpenAI-compatible provider), opt-in with data-egress disclosure | Tested (MOCK API) / Config | `tests/test_remote_provider.py` against a local fake server; real providers need your key and are unverified here |
 | Embeddings / vector retrieval | Unavailable | keyword FTS only (ADR-009) |
 
 ## Browser and computer
@@ -71,13 +76,13 @@ engine, policy and tool mechanics, not model quality. Real-model results are in 
 | Upload and download via workspace | Tested | `test_browser_download_and_upload` |
 | Console-log capture as evidence | Tested | `test_qa_workflow_reproduce_report_and_ask_before_submit` |
 | Session-expired detection; password / MFA / CAPTCHA pause | Tested | `test_login_persistence…`, `test_bot_refuses_password_fields_and_captcha` |
-| Bots refuse to type into password / one-time-code fields | Unverified | enforced in `computer.b_type`; the test's page had no password field to exercise it |
+| Bots refuse to type into password / one-time-code fields | Unverified | enforced in `computer.b_type`; no fixture page resolves a label to a password field yet |
 | Live view (screenshot polling ~1.5 s) and human takeover (click/type/keys/goto) | Tested | takeover tests via API; UI manually checked |
 | Takeover revokes the automation lease mid-task; resume only after release | Tested | `test_takeover_revokes_automation_mid_task` |
 | Sensitive human input excluded from transcripts, events, audit, recordings | Tested | DB scan in `test_login_persistence…`; `test_demonstration_recording_excludes_password` |
 | Serialized shared-profile access (lease + lock; never two processes on one profile) | Tested | `test_concurrent_browser_access_serialized` |
 | SSRF guard for navigation and fetch (private/link-local/metadata blocked) | Tested | `test_ssrf_blocked`, injection test |
-| SSRF guard on browser sub-resources / redirects (route interception) | Unverified | implemented in `computer.browser_for`; DNS-rebinding not handled |
+| DNS-rebinding-safe egress: pinned resolution for server-side HTTP and a pinning proxy for all Chromium traffic | Tested | `test_dns_rebinding_blocked_for_http_client` (shows the old pattern was exploitable), `test_dns_rebinding_blocked_in_fetch_tool`, `test_egress_proxy_pins_resolution`, `test_browser_traffic_goes_through_egress_proxy` |
 | WebSocket live streaming | Unavailable | screenshot polling instead (adequate for takeover; not video-smooth) |
 | Visual (coordinate) computer control by bots | Unavailable | requires a tested vision model (ADR-010) |
 | Multi-user hostile-code isolation | Unavailable | single-user deployment only; needs per-user VMs (docs/ARCHITECTURE.md) |
@@ -88,11 +93,12 @@ engine, policy and tool mechanics, not model quality. Real-model results are in 
 |---|---|---|
 | argv-only `run_command`; separately gated `run_shell` (off by default) | Tested | `test_terminal_timeout_env_scrub_and_cwd`, `test_shell_requires_approval_by_default` |
 | Timeouts, process-tree kill, scrubbed environment, workspace cwd | Tested | same + cancellation test |
-| CPU/memory/file-size/process rlimits | Unverified | Linux container only (`preexec_fn`); not available on native Windows |
-| Network control for terminal | Config | Docker `exec` network is internal; native runs have normal network access |
+| Per-command memory and process limits, output cap without pipe deadlock | Tested (Windows) / CI (Linux) | Windows Job Objects: `test_terminal_memory_limit`, `test_terminal_process_limit`, `test_terminal_large_output_is_drained_and_capped`; POSIX rlimits run in the Linux CI job and the Docker smoke test |
+| Terminal filesystem isolation | Unavailable natively | an approved command runs as the LocalCrew user; isolation requires the container/VM deployment |
+| Network control for terminal | Unavailable | natively unrestricted; in Compose the terminal shares the computer container's egress network (browser needs it) |
 | Workspace list/read/write/move/search/soft-delete; versioned overwrites | Tested | file API tests, crash test |
 | Path traversal rejection | Tested | `test_path_traversal_rejected` |
-| Symlink escape rejection | Unverified | test skipped: Windows here cannot create symlinks without developer mode |
+| Link escapes (symlinks, Windows junctions, other reparse points, hard links) | Tested | junction + hard-link tests on Windows (`test_junction_escape_blocked_everywhere` — this found a real search leak), symlink test runs on Linux CI (skipped on this Windows host) |
 | Upload validation (type, magic bytes, size, archives/executables, encrypted/JS PDFs) | Tested | `test_unsafe_uploads_rejected` |
 | Downloadable artifacts with provenance, versions, owner-only access, `attachment` + sandbox CSP | Tested | `test_task_creates_downloadable_artifact` |
 | Office formats (docx/xlsx/pptx) | Unavailable | backlog |
@@ -152,9 +158,10 @@ engine, policy and tool mechanics, not model quality. Real-model results are in 
 | Capability | Status | Evidence / notes |
 |---|---|---|
 | Native launcher (`infra/scripts/run_local.py`), portable PostgreSQL setup | Tested | used throughout this session |
-| Docker Compose with health checks, unprivileged containers, no Docker socket / home mounts | Unverified | written for Linux; Docker unavailable on the dev host |
+| Docker Compose with health checks, unprivileged containers, no Docker socket / home mounts | CI | `infra/scripts/docker_smoke.sh` in the `docker` CI job; not runnable on the dev host |
 | Alembic migrations | Tested | every test run migrates a fresh schema |
 | Backup / restore into a clean DB + data dir + key file; checksum verification | Tested | `test_backup_restore_into_clean_environment` |
 | Upgrade path (restore then `alembic upgrade head`) | Unverified | only one schema revision exists |
 | Responsive UI (desktop + phone), keyboard skip link, no horizontal overflow | Tested | Playwright E2E `desktop` + `phone` projects |
 | Full accessibility audit (screen readers, contrast) | Unverified | native elements + labels used; no audit run |
+| Lint / typecheck | Tested | `ruff check .` (Python), `eslint .` with react-hooks rules, `tsc --noEmit` |

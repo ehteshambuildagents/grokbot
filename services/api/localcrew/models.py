@@ -9,8 +9,18 @@ Access scopes:
 from datetime import datetime
 
 from sqlalchemy import (
-    BigInteger, Boolean, Computed, DateTime, ForeignKey, Index, Integer, LargeBinary, String, Text,
-    UniqueConstraint, text,
+    BigInteger,
+    Boolean,
+    Computed,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    LargeBinary,
+    String,
+    Text,
+    UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column

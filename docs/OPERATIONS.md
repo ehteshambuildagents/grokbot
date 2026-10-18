@@ -49,6 +49,12 @@ and runs `alembic upgrade head`. Point `LOCALCREW_DATABASE_URL`, `LOCALCREW_DATA
 3. `cd services/api && ../../.venv/Scripts/python -m alembic upgrade head` (the launcher also does this).
 4. Restart. Rollback: restore the backup into a clean database and check out the previous release.
 
+## Internal service token
+
+The API/worker authenticate to the computer service with a shared token. Natively, if `LOCALCREW_COMPUTER_TOKEN` is
+not set, a random token is created at `.local/keys/computer.token` on first use. All three processes read it. In
+Compose, set `LOCALCREW_COMPUTER_TOKEN` in `.env`. Rotate by changing it and restarting all services.
+
 ## Secret-key rotation
 
 ```bash

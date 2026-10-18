@@ -1,98 +1,119 @@
 # Acceptance test report
 
-Date: 2026-10-18 (Asia/Karachi). Host: Windows 11 Pro 10.0.26200, Intel i7-1265U, 15.6 GB RAM, no GPU.
-Python 3.13.15, Node 24.19.0, PostgreSQL 17.6 (portable), Ollama 0.40.5, Playwright 1.64 / Chromium 156.
+Latest: 2026-10-19, verification pass 2 (before first publication). Host: Windows 11 Pro, Intel i7-1265U, 15.6 GB
+RAM, no GPU, no Docker/WSL. Python 3.13.15, Node 24.19, PostgreSQL 17.6 (portable), Ollama 0.40.5, Playwright 1.64.
 
-## Summary
+## Summary (final code)
 
-| Suite | Command | Result |
+| Check | Command | Result |
 |---|---|---|
-| Pytest acceptance (incl. real-model test) | `.venv/Scripts/python -m pytest` | **54 passed, 1 skipped** in 264.8 s ([log](test-runs/2026-10-18-pytest.txt)) |
-| Playwright E2E, desktop + phone | `cd apps/web && npx playwright test` | **6 passed** in 14.3 s |
-| Model eval (smoke, real models) | `python tests/eval/model_eval.py qwen2.5:1.5b qwen2.5:3b` | 1.5b: 5/6, 3b: 5/6 ([json](eval/model_eval_results.json)) |
-| Web typecheck + build | `cd apps/web && npm run build` | passed |
+| Python lint | `ruff check .` | **clean** |
+| Backend acceptance (MOCK model where a model is needed) | `pytest --deselect tests/test_realmodel.py` | **87 passed, 1 skipped** in 187 s ([log](test-runs/2026-10-19-pytest-final.txt)) |
+| Web lint, typecheck, production build | `npm run lint && npm run build` | **clean** |
+| Playwright E2E, desktop + phone | `npx playwright test` | **6 passed** ([log](test-runs/2026-10-19-web-e2e.txt)) |
+| Real local-model tests (`-m realmodel`, `qwen2.5:3b`) | `pytest tests/test_realmodel.py` | **2 failed** (see below; [log](test-runs/2026-10-19-pytest-with-realmodel.txt)) |
+| Hosted model API (OpenAI-compatible) | `tests/test_remote_provider.py` | **7 passed against a MOCK API server only**; no real provider tested (no key) |
+| Linux / Docker | GitHub Actions `ci.yml` | see "CI" below |
 
-Skipped: `test_symlink_escape_rejected`. This Windows account cannot create symlinks (no developer mode).
-The guard is implemented, but this result counts as **unverified**.
+Skipped: `test_symlink_escape_rejected`. This Windows account cannot create symlinks. The equivalent junction and
+hard-link tests pass here, and the symlink test runs on Linux CI.
 
-No flaky-test retries are configured (`retries: 0` in Playwright; no rerun plugin in pytest). Defects found while
-writing the tests were fixed in code, not retried away (see "Defects found" below).
+No test retries are configured (`retries: 0`; no rerun plugin). Nothing was skipped or weakened to get a pass.
+Failures are listed as failures.
+
+## Real-model results (not mocked)
+
+### Final regression with real models: **failed**
+Run on the code just before the API-provider addition, under heavy host load (the full run took 2 h 31 min instead
+of ~10 min):
+- `test_real_ollama_cancellation_stops_generation` (`qwen2.5:3b`) **failed**: cancellation completed after
+  6,447 s instead of < 5 s. The same mechanism cancelled `qwen2.5:1.5b` in ~1.5 s, during both prompt evaluation
+  and generation, in direct checks earlier the same day. The root cause with 3b under load is not yet established.
+- `test_real_model_report_is_correct_or_rejected` (`qwen2.5:3b`) **failed**: the task exceeded its 30-minute
+  deadline (status `failed`, "task deadline exceeded"). No wrong report was accepted.
+
+These block "it works well with local models on this laptop". They are BACKLOG item 0.
+
+### Report trials (`tests/eval/report_trials.py`, sales report with a required percentage)
+Each round ran on a then-current validator; each round's failures drove a fix. The **final validator was not
+re-trialed** (the official last round was stopped when the validator changed again). Raw data:
+`docs/eval/history/*.json`.
+
+| Round (validator state) | qwen2.5:3b succeeded | qwen2.5:1.5b succeeded |
+|---|---|---|
+| 2 – before token cap | 4/5 | 2/5 |
+| 3 – before evidence fix | 5/5 | 1/5 |
+| 4 – before narrow recomputation | 4/5 | 1/5 |
+| 5 – before fenced-Markdown extraction | 3/5 | 1/5 |
+| 6 – before "calculate results are not evidence" | 2/5 | 3/5 |
+
+**Offline re-validation:** I re-checked all 50 stored real-model reports from every round against the final validator.
+It accepts 11. All 11 state only correct figures (12.5% sales growth, 125% returns growth). One of them
+**mislabels** a correct figure ("October to November: 125%" for the returns change). Deterministic checks verify
+figures, not their labels. Every wrong report found in the trials is rejected by the final validator: 11.67%,
+−20%, 15%, 25%, +50%, 120,000, a Chinese-language report, non-answers, assistant chatter, malformed tables. Each has
+a regression test (`tests/test_hardening.py`, `tests/test_deliverable_regressions.py`).
+
+Honest conclusion: on this CPU-only laptop, small local models produce a validated, correct report only some of the
+time. Validation prevents wrong numbers from being reported as success, but it does not make the model better.
+Use a stronger model (GPU host or a hosted API) for dependable deliverables.
 
 ## The 16 required scenarios
 
-"MOCK" = deterministic scripted model drives the steps. Everything else in those tests is real: PostgreSQL,
-Chromium, subprocesses, HTTP fixture app.
-
 | # | Scenario | Test(s) | Result |
 |---|---|---|---|
-| 1 | Bot creation and persistence after restart | `test_bot_crud_versions_duplicate_delete`, `test_bot_persists_across_api_restart` (API process killed and restarted) | pass |
-| 2 | Real local-model task creating a downloadable report | `test_real_model_report` (qwen2.5:1.5b, 15.7 s) + manual UI run (165.5 s) | pass (mechanics); content quality poor, see below |
-| 3 | Browser login persistence (fixture account) | `test_login_persistence_expiry_and_takeover`: human sign-in via takeover, computer service restarted, bot still signed in | pass |
-| 4 | Session expiry and human takeover | same test (fixture sessions expired → `session_expired`), `test_takeover_revokes_automation_mid_task` | pass |
-| 5 | Bot handoff with evidence preserved | `test_handoff_creates_child_with_evidence`, `test_handoff_loop_prevention` (MOCK) | pass |
-| 6 | Scheduled run with the frontend closed | `test_scheduled_routine_runs_with_frontend_closed`: only the worker process running, no API, no browser | pass |
-| 7 | Worker failure and checkpoint recovery | `test_worker_crash_recovers_from_checkpoint`: worker hard-killed mid-task; second worker resumes; step 1 not re-executed | pass |
-| 8 | Ambiguous external write without duplicates | `test_ambiguous_write_reconciled_no_duplicate` (502 after commit), `test_ambiguous_write_after_crash_never_blindly_retried`; fixture counts exactly 1 create | pass |
-| 9 | Cancellation of active browser and terminal work | `test_cancel_active_browser_navigation` (30 s page aborted < 12 s), `test_cancel_running_terminal_command` (60 s process tree killed < 15 s) | pass |
-| 10 | Approval denial, expiry, replay, changed payload | `test_approval_denied`, `test_approval_expired`, `test_approval_card_and_allow_once` (replay), `test_changed_payload_invalidates_approval` | pass |
-| 11 | Concurrent access to the shared browser | `test_concurrent_browser_access_serialized` (second task gets 423; parallel calls serialized) | pass |
-| 12 | Memory correction and deletion | `test_memory_correct_disable_delete`, `test_bot_private_memory_not_shared` | pass |
-| 13 | Cross-user access denial | `test_cross_user_access_denied` (bots, tasks, messages, events, memory, files, artifacts) | pass |
-| 14 | Malicious page instructions (credential disclosure) | `test_prompt_injection_cannot_exfiltrate`: MOCK model *obeys* the injection; metadata-IP fetch, internal port, key-file read blocked; tracker write held for approval; token never in model context | pass |
-| 15 | Path traversal, SSRF, unsafe upload rejection | `test_path_traversal_rejected`, `test_ssrf_blocked`, `test_unsafe_uploads_rejected` (symlink case skipped) | pass |
-| 16 | Backup restoration into a clean environment | `test_backup_restore_into_clean_environment`: new DB, new data dir, new key path, verified in a separate process | pass |
+| 1 | Bot creation and persistence after restart | `test_bot_crud_versions_duplicate_delete`, `test_bot_persists_across_api_restart` | pass |
+| 2 | Real local-model task → downloadable report | `test_real_model_report_is_correct_or_rejected`, report trials | **fail in final regression** (deadline); succeeded in earlier trials |
+| 3 | Browser login persistence (fixture account) | `test_login_persistence_expiry_and_takeover` | pass |
+| 4 | Session expiry and human takeover | same + `test_takeover_revokes_automation_mid_task` | pass |
+| 5 | Bot handoff with evidence | `test_handoff_creates_child_with_evidence`, `test_handoff_loop_prevention` | pass (MOCK) |
+| 6 | Scheduled run with frontend closed | `test_scheduled_routine_runs_with_frontend_closed` | pass |
+| 7 | Worker failure and checkpoint recovery | `test_worker_crash_recovers_from_checkpoint` (hard kill) | pass |
+| 8 | Ambiguous external write, no duplicates | `test_ambiguous_write_*` | pass |
+| 9 | Cancellation of browser and terminal work | `test_cancel_active_browser_navigation`, `test_cancel_running_terminal_command` | pass (Ollama cancellation: see above) |
+| 10 | Approval denial, expiry, replay, changed payload | `test_approval_*`, `test_changed_payload_invalidates_approval` | pass |
+| 11 | Concurrent shared-browser access | `test_concurrent_browser_access_serialized` | pass |
+| 12 | Memory correction and deletion | `test_memory_correct_disable_delete` | pass |
+| 13 | Cross-user access denial | `test_cross_user_access_denied` | pass |
+| 14 | Malicious page instructions | `test_prompt_injection_cannot_exfiltrate` | pass (MOCK model obeys the injection; enforcement blocks it) |
+| 15 | Path traversal, SSRF, unsafe uploads | traversal/SSRF/upload tests + junction, hard-link, DNS-rebinding tests | pass (symlink case: Linux CI) |
+| 16 | Backup restore into a clean environment | `test_backup_restore_into_clean_environment` | pass |
 
-QA workflow: `test_qa_workflow_reproduce_report_and_ask_before_submit`. Quill opens the fixture issue list,
-reproduces the seeded defect (2+2 → 5), captures a PNG screenshot and console log, writes `bug-report.md`, and
-stops at `waiting_for_approval`. The tracker has 0 issues until approval, then exactly 1. Pass (MOCK).
+QA workflow (`test_qa_workflow_reproduce_report_and_ask_before_submit`): pass (MOCK).
 
-Additional coverage: `tests/test_extras.py` (compaction, upload/download, terminal timeout/env scrub, shell approval
-gate, local-files connector, skill-from-task + approval gate, routine failure notification, deadline, teams,
-templates, web-search-unavailable). All pass.
+## Defects found and fixed in this pass (each has a regression test)
 
-## Real-model results (not MOCK)
+1. **Junction escape**: workspace search returned the contents of a file outside the workspace.
+2. **DNS rebinding**: check-then-connect was exploitable. Now pinned resolution for server-side HTTP, plus a pinning
+   egress proxy for all Chromium traffic.
+3. **Ollama cancellation during prompt evaluation** took 60 s (no response headers until the first token). Now
+   socket shutdown from a watchdog. See the open 3b failure above.
+4. **Terminal**: large output could deadlock until timeout, and Windows had no memory or process limits. Now Job
+   Objects, continuous draining and output caps.
+5. **Wrong reports could succeed** (a file existing was enough). Now: a `calculate` tool; deterministic structure,
+   content and numeric-grounding validation; one repair turn; failure otherwise. Real trials then exposed six more
+   false acceptances, all fixed: clock time as evidence, 4 × 12.5 recomputation, a wrong formula via `calculate`,
+   "15%" vs the difference, commentary and foreign-language output, URLs counted as figures.
+6. A repair turn ignored the corrected answer when the deliverable already existed.
+7. SSE endpoints held a DB connection "idle in transaction" for the whole stream.
+8. A misconfigured model provider crashed the worker thread instead of failing the task.
+9. Hard-coded default internal token; ESLint react-hooks errors; ruff findings.
 
-| Run | Model | Wall time | Outcome |
-|---|---|---|---|
-| UI, "short sales report… deliverable sales-report.md" | qwen2.5:1.5b | 165.5 s (plan + tool call + report on CPU) | `succeeded`; model called `create_artifact` itself; file downloadable |
-| `test_real_model_report` | qwen2.5:1.5b | 15.7 s | `succeeded`; deliverable written from the final answer (model did not call the tool) |
+## Added in this pass
 
-**Quality finding (honest):** in the UI run the report said returns were 0 (input: 4 and 9) and sales grew
-11.67% (correct: 12.5%), and the markdown table was malformed. The 3B model in the eval falsely claimed it had
-fetched an attacker URL that it never called. Small local models are unreliable at arithmetic and at reporting
-their own actions accurately. The deliverable and evidence mechanics are sound, but outputs need review. Use a
-calculation tool and a stronger model for numeric work.
+Optional **hosted model API** (any OpenAI-compatible provider): opt-in via `.env`, data-egress disclosure in
+Settings, key never stored in the DB or sent to the model, retries on 429/5xx, no retry on 4xx, cancellation before
+the first byte. **Tested only against a local MOCK server.**
 
-## Measured resource use (dev host, idle unless noted)
+## CI
 
-| Component | Working set |
-|---|---|
-| API (uvicorn) | 111 MB |
-| Worker | 98 MB |
-| Computer service (python) | 90 MB |
-| Playwright Chromium (4 processes, one page open) | 176 MB |
-| PostgreSQL (all backends) | 291 MB |
-| Ollama with `qwen2.5:1.5b` loaded | 1.37 GB (Ollama `/api/ps`) |
-| Ollama with `qwen2.5:3b` loaded | 2.42 GB |
-| Disk: `.local` (PostgreSQL binaries + data + app data) | 946 MB |
-| Disk: Ollama models (both) | 2.78 GB |
+`.github/workflows/ci.yml` runs on GitHub-hosted Ubuntu 24.04: ruff, the full pytest suite with PostgreSQL 17
+(real-model tests auto-skip without Ollama), web lint/build, Playwright E2E, and a Docker Compose build + smoke test
+(`infra/scripts/docker_smoke.sh`). Its first results appear on the repository's Actions tab after publication. They
+were not available when this report was written.
 
-Generation speed on this CPU: ~20–24 tok/s (1.5B), ~10–12 tok/s (3B).
+## Measured resource use (dev host)
 
-## Defects found and fixed during testing
-
-1. Retry bookkeeping was discarded by a row refresh, so a failing task was re-claimed in a hot loop. Fixed in
-   `Runner._end(**fields)`.
-2. **Security:** after an approval, a changed pending payload executed under the old approval. Now a changed
-   digest resets the call and requires a new approval (`test_changed_payload_invalidates_approval`).
-3. Task deadline was not enforced during a long model call. The remaining time is now passed to the provider and
-   re-checked after it returns.
-4. DST gap mapping shifted nonexistent local times backwards. Now uses PEP 495 `fold=0` (forward).
-5. Demonstration conversion crashed when Enter followed an excluded sensitive step.
-6. UI: the focused skip link covered the phone menu button; the activity panel squeezed the chat at mid widths.
-
-## Not tested here
-
-Docker Compose deployment, Linux rlimits/network isolation for the terminal, symlink escape, DNS rebinding,
-real-Ollama mid-generation cancellation, upgrade across schema revisions, screen-reader accessibility. See
-[CAPABILITIES.md](CAPABILITIES.md).
+API ~111 MB, worker ~98 MB, computer service ~90 MB, Playwright Chromium ~176 MB, PostgreSQL ~291 MB. Ollama with
+`qwen2.5:1.5b` loaded: 1.37 GB; with `qwen2.5:3b`: 2.42 GB. Generation: ~20–24 tok/s (1.5B) and ~10–12 tok/s (3B)
+when the host is not loaded.

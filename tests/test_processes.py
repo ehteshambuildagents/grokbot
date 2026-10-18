@@ -1,15 +1,13 @@
 """Tests that use real separate processes: API server restart, worker subprocess, worker crash."""
 import hashlib
 import hmac
-import json
 import time
 from datetime import UTC, datetime, timedelta
 
 import httpx
 import pytest
-from sqlalchemy import func, select
-
-from conftest import Client, call, drain, set_scripts, wait_http
+from conftest import Client, call, drain, set_scripts
+from sqlalchemy import select
 
 API_PORT = 18000
 API = f"http://127.0.0.1:{API_PORT}"

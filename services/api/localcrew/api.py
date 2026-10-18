@@ -3,7 +3,6 @@ import asyncio
 import json
 import time
 from collections import defaultdict
-from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.concurrency import run_in_threadpool
@@ -17,8 +16,19 @@ from .common import NotFound, audit, bot_access, emit, owned
 from .config import ROOT, settings
 from .db import SessionLocal, get_db, utcnow
 from .models import (
-    Artifact, Bot, BotVersion, Conversation, Membership, Message, Participant, Routine, Task, TaskEvent, TaskStep,
-    ToolCall, User,
+    Artifact,
+    Bot,
+    BotVersion,
+    Conversation,
+    Membership,
+    Message,
+    Participant,
+    Routine,
+    Task,
+    TaskEvent,
+    TaskStep,
+    ToolCall,
+    User,
 )
 from .security import create_session, hash_password, load_session, verify_password
 from .tools import DEFAULT_TOOLS, TOOLS
@@ -615,20 +625,31 @@ async def _sse(request: Request, user_id: str, task_id: str | None, after: int):
         await asyncio.sleep(0.5)
 
 
+def _short_session_user(request: Request) -> User:
+    """Auth for long-lived streams: must not hold a pooled DB session for the stream's lifetime (a Depends(get_db)
+    session stays open, idle in transaction, until the streaming response ends)."""
+    with SessionLocal()() as db:
+        s = load_session(db, request.cookies.get(COOKIE))
+        if not s:
+            raise HTTPException(401, "not signed in")
+        return db.get(User, s.user_id)
+
+
 @app.get("/api/events")
-def stream_all(request: Request, after: int = 0, user: User = Depends(current_user), db: Session = Depends(get_db)):
+def stream_all(request: Request, after: int = 0, user: User = Depends(_short_session_user)):
     """after=-1 starts at the newest event; reconnects resume from Last-Event-ID (replay)."""
     after = int(request.headers.get("last-event-id") or after)
     if after < 0:
-        after = db.scalar(select(func.max(TaskEvent.id)).where(TaskEvent.owner_user_id == user.id)) or 0
+        with SessionLocal()() as db:
+            after = db.scalar(select(func.max(TaskEvent.id)).where(TaskEvent.owner_user_id == user.id)) or 0
     return StreamingResponse(_sse(request, user.id, None, after), media_type="text/event-stream",
                              headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"})
 
 
 @app.get("/api/tasks/{task_id}/events")
-def stream_task(task_id: str, request: Request, after: int = 0, user: User = Depends(current_user),
-                db: Session = Depends(get_db)):
-    owned(db, Task, task_id, user.id)
+def stream_task(task_id: str, request: Request, after: int = 0, user: User = Depends(_short_session_user)):
+    with SessionLocal()() as db:
+        owned(db, Task, task_id, user.id)
     after = int(request.headers.get("last-event-id") or after)
     return StreamingResponse(_sse(request, user.id, task_id, after), media_type="text/event-stream",
                              headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"})

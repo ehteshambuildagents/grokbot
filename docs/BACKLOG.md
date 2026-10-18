@@ -3,17 +3,26 @@
 Ordered roughly by value. Each item lists what "done" means.
 
 ## Hardening (do first)
-1. **Docker Compose verification on a Linux host**: `docker compose up`, run the pytest suite against it, record
-   results in TEST_REPORT, then flip the CAPABILITIES rows to Tested.
-2. **SSRF DNS pinning**: resolve once and connect to the checked IP (httpx transport + Chromium host-resolver
-   rules) to close the DNS-rebinding window.
-3. **Symlink-escape test on Linux/macOS** (skipped on this Windows host).
-4. **Terminal resource limits on native hosts** (Windows Job Objects) or document "container only".
+0. **Release-blocking for local-model users: real-model failures in the final regression.** Investigate the
+   `qwen2.5:3b` cancellation that took 6,447 s (`test_real_ollama_cancellation_stops_generation`) and the 30-minute
+   deadline overrun (`test_real_model_report_is_correct_or_rejected`) on an otherwise idle host; rerun
+   `tests/eval/report_trials.py` on the final validator. Validate the hosted-API path with a real key.
+1. **Docker/Linux verification on a real host** beyond the CI smoke test: long-running Compose deployment, upgrade,
+   backup/restore inside containers.
+2. **Terminal isolation**: run commands in a separate network-less container (or gVisor/microVM) instead of the
+   browser's container; on Windows, a low-integrity or AppContainer token for filesystem isolation.
+3. **Shell-ambiguity test** for the `ambiguous_command` resume path.
+4. **Password-field refusal test**: a fixture page where a label resolves to a password input.
 5. **Persistent login rate limiting** in PostgreSQL; optional TOTP MFA for remote access.
 6. **Per-tenant internal tokens / mTLS** between worker and computer service.
-7. **Shell-ambiguity test**: an automated test for the `ambiguous_command` resume path.
-8. **Password-field refusal test**: the bot-typing guard needs a fixture page where the label resolves to a
-   password field.
+7. **Completeness checks** for deliverables (requested sections present), e.g. a skill-defined output contract that
+   validation enforces.
+8. **Recomputation scope**: the one-step derivation check can accept a wrong number that happens to equal some
+   combination of the inputs; consider requiring `calculate` provenance for every derived figure in strict mode.
+
+Done in verification pass 2 (2026-10-18): DNS pinning + browser egress proxy; junction/hard-link escapes; Windows
+Job Object limits and output draining; real Ollama cancellation; deterministic calculation and output validation;
+lint (ruff, ESLint); CI on Linux with a Docker Compose smoke test.
 
 ## Product
 9. **Embeddings for memory**, only if a retrieval eval (to be written: queries + expected memory ids) shows FTS

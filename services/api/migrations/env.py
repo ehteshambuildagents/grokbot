@@ -1,8 +1,7 @@
 from alembic import context
-from sqlalchemy import create_engine
-
 from localcrew.config import settings
 from localcrew.models import Base
+from sqlalchemy import create_engine
 
 target_metadata = Base.metadata
 

@@ -8,7 +8,7 @@ RUN npm run build
 
 FROM python:3.13.15-slim-bookworm
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1
-RUN useradd --create-home --uid 10001 app
+RUN useradd --create-home --uid 10001 app && mkdir -p /data /keys && chown app:app /data /keys
 WORKDIR /app
 COPY services/api/requirements.in services/api/requirements.lock services/api/
 RUN pip install -r services/api/requirements.in -c services/api/requirements.lock

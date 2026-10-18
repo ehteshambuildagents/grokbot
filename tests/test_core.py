@@ -1,6 +1,5 @@
 """Core acceptance tests (MOCK model where a model is involved; everything else real)."""
 import httpx
-
 from conftest import FIXTURE, Client, call, drain, set_scripts
 
 
@@ -60,6 +59,7 @@ def test_path_traversal_rejected(client):
 
 def test_symlink_escape_rejected(client, tmp_path):
     import os
+
     from localcrew import workspace
     root = workspace.root(client.user_id)
     try:
@@ -71,8 +71,8 @@ def test_symlink_escape_rejected(client, tmp_path):
 
 
 def test_ssrf_blocked():
-    from localcrew.security import check_url
     import pytest
+    from localcrew.security import check_url
     for u in ["http://169.254.169.254/latest", "http://127.0.0.1:5432/", "http://localhost:8000/api/me",
               "http://10.0.0.1/", "file:///etc/passwd", "ftp://example.com/"]:
         with pytest.raises(ValueError):
@@ -203,6 +203,7 @@ def test_approval_denied(client):
 def test_approval_expired(client):
     tid, appr = _approval_task(client, "c")
     from datetime import timedelta
+
     from localcrew.db import session_scope, utcnow
     from localcrew.models import ApprovalRequest
     from localcrew.policy import expire_stale
@@ -330,8 +331,8 @@ def test_prompt_injection_cannot_exfiltrate(client):
     appr = client.ok("get", "/api/approvals")[0]
     assert "fixture-tracker-token" not in str(appr["payload"])  # secrets redacted on the card
     # The model never received the tracker token or the secret key file
-    from localcrew.llm import ScriptedProvider  # noqa: F401
     from localcrew.db import session_scope
+    from localcrew.llm import ScriptedProvider  # noqa: F401
     from localcrew.models import Task
     with session_scope() as db:
         msgs = str(db.get(Task, tid).checkpoint["messages"])
@@ -345,8 +346,8 @@ def test_prompt_injection_cannot_exfiltrate(client):
 def test_secrets_encrypted_at_rest_and_redacted(client):
     client.ok("post", "/api/connections", status=201, json={"connector": "fixture_tracker", "name": "t",
               "config": {"base_url": FIXTURE}, "secret": "fixture-tracker-token"})
-    from sqlalchemy import select, text
     from localcrew.db import session_scope
+    from sqlalchemy import select, text
     with session_scope() as db:
         raw = b"".join(r[0] for r in db.execute(text("select ciphertext from secret_references")))
     assert b"fixture-tracker-token" not in raw
@@ -409,6 +410,7 @@ def test_handoff_loop_prevention(client):
 def test_cancel_running_terminal_command(client):
     import threading
     import time
+
     from localcrew.db import session_scope
     from localcrew.models import PolicyRule
     set_scripts({"k": [{"tool_calls": [call("run_command", argv=["python", "-c", "import time; time.sleep(60)"], timeout_s=120)]},

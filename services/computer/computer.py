@@ -14,8 +14,6 @@ import base64
 import os
 import re
 import shutil
-import signal
-import subprocess
 import sys
 import time
 from dataclasses import dataclass, field
@@ -23,16 +21,18 @@ from functools import lru_cache
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "api"))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+import sandbox  # noqa: E402
+from egress_proxy import EgressProxy  # noqa: E402
 from fastapi import Depends, FastAPI, Header, HTTPException  # noqa: E402
+from localcrew import workspace  # noqa: E402
+from localcrew.config import settings  # noqa: E402
+from localcrew.security import Redactor, check_url  # noqa: E402
 from playwright.async_api import Error as PWError  # noqa: E402
 from playwright.async_api import TimeoutError as PWTimeout  # noqa: E402
 from playwright.async_api import async_playwright  # noqa: E402
 from pydantic import BaseModel, Field  # noqa: E402
-
-from localcrew import workspace  # noqa: E402
-from localcrew.config import settings  # noqa: E402
-from localcrew.security import Redactor, check_url  # noqa: E402
 
 LEASE_S = 120
 IS_WIN = os.name == "nt"
@@ -81,6 +81,7 @@ class UserBrowser:
 
 class State:
     pw = None
+    proxy = None
     browsers: dict[str, UserBrowser] = {}
     procs: dict[str, set] = {}
     cancelled: set[str] = set()
@@ -90,7 +91,8 @@ app = FastAPI(title="LocalCrew computer service", docs_url=None, redoc_url=None)
 
 
 def auth(x_internal_token: str = Header("")):
-    if x_internal_token != settings().computer_token:
+    import hmac
+    if not x_internal_token or not hmac.compare_digest(x_internal_token, settings().internal_token()):
         raise HTTPException(401, "bad internal token")
 
 
@@ -120,8 +122,13 @@ async def browser_for(user_id: str) -> UserBrowser:
     if ub.ctx is None:
         if State.pw is None:
             State.pw = await async_playwright().start()
+        if State.proxy is None:
+            State.proxy = await EgressProxy().start()
+        # All traffic (loopback included: "<-loopback>") goes through the DNS-pinning egress proxy.
         ub.ctx = await State.pw.chromium.launch_persistent_context(
-            str(profile_dir(user_id)), headless=True, accept_downloads=True, viewport={"width": 1280, "height": 800})
+            str(profile_dir(user_id)), headless=True, accept_downloads=True, viewport={"width": 1280, "height": 800},
+            proxy={"server": f"http://127.0.0.1:{State.proxy.port}", "bypass": "<-loopback>"},
+            args=["--proxy-bypass-list=<-loopback>", "--disable-quic"])
 
         async def guard(route):
             from urllib.parse import urlsplit
@@ -467,26 +474,6 @@ class RunB(Base):
     timeout_s: int = Field(60, ge=1, le=600)
 
 
-def _limits():  # POSIX only (container); rlimits per process tree
-    import resource
-    resource.setrlimit(resource.RLIMIT_AS, (2 << 30, 2 << 30))
-    resource.setrlimit(resource.RLIMIT_FSIZE, (512 << 20, 512 << 20))
-    resource.setrlimit(resource.RLIMIT_NPROC, (256, 256))
-    resource.setrlimit(resource.RLIMIT_CPU, (600, 600))
-
-
-def _kill_tree(p: subprocess.Popen):
-    if p.poll() is not None:
-        return
-    if IS_WIN:
-        subprocess.run(["taskkill", "/T", "/F", "/PID", str(p.pid)], capture_output=True)
-    else:
-        try:
-            os.killpg(p.pid, signal.SIGKILL)
-        except ProcessLookupError:
-            pass
-
-
 @app.post("/terminal/run", dependencies=[Depends(auth)])
 async def t_run(b: RunB):
     if b.task_id in State.cancelled:
@@ -497,29 +484,33 @@ async def t_run(b: RunB):
     argv = b.argv or (["cmd", "/c", b.shell] if IS_WIN else ["/bin/sh", "-c", b.shell])
     env = {"PATH": os.environ.get("PATH", ""), "HOME": str(cwd), "LANG": "C.UTF-8",
            "SYSTEMROOT": os.environ.get("SYSTEMROOT", ""), "TEMP": str(cwd), "TMP": str(cwd)}
-    kw = {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP} if IS_WIN else {"start_new_session": True, "preexec_fn": _limits}
     try:
-        p = subprocess.Popen(argv, cwd=cwd, env=env, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-                             stderr=subprocess.STDOUT, **kw)
+        proc = sandbox.spawn(argv, cwd, env)
     except (FileNotFoundError, PermissionError) as e:
         raise HTTPException(400, f"cannot start {argv[0]}: {e}") from e
-    State.procs.setdefault(b.task_id, set()).add(p)
+    p = proc.popen
+    State.procs.setdefault(b.task_id, set()).add(proc)
     start = time.monotonic()
+    timed_out = False
     try:
         while p.poll() is None:
             if b.task_id in State.cancelled:
-                _kill_tree(p)
+                proc.kill()
                 raise HTTPException(499, "cancelled")
             if time.monotonic() - start > b.timeout_s:
-                _kill_tree(p)
-                out = p.stdout.read(65536).decode("utf-8", "replace")
-                return {"exit_code": None, "timed_out": True, "output": Redactor.text(out)}
+                proc.kill()
+                timed_out = True
+                break
             await asyncio.sleep(0.1)
-        out = p.stdout.read(65536).decode("utf-8", "replace")
-        return {"exit_code": p.returncode, "timed_out": False, "output": Redactor.text(out),
-                "seconds": round(time.monotonic() - start, 2)}
+        proc.close()
+        out, truncated = proc.output()
+        return {"exit_code": None if timed_out else p.returncode, "timed_out": timed_out, "output": Redactor.text(out),
+                "output_truncated": truncated, "seconds": round(time.monotonic() - start, 2),
+                "limits": {"memory_mb": sandbox.Limits().memory_mb, "max_procs": sandbox.Limits().max_procs}}
     finally:
-        State.procs.get(b.task_id, set()).discard(p)
+        proc.kill()
+        proc.close()
+        State.procs.get(b.task_id, set()).discard(proc)
 
 
 # ---------------- cancellation ----------------
@@ -532,8 +523,8 @@ class CancelB(BaseModel):
 async def cancel(b: CancelB):
     State.cancelled.add(b.task_id)
     killed = 0
-    for p in list(State.procs.get(b.task_id, ())):
-        _kill_tree(p)
+    for proc in list(State.procs.get(b.task_id, ())):
+        proc.kill()
         killed += 1
     aborted = False
     for ub in State.browsers.values():
@@ -558,7 +549,9 @@ async def b_release(b: CancelB):
 
 @app.get("/health")
 async def health():
-    return {"ok": True, "browsers_open": sum(1 for b in State.browsers.values() if b.ctx), "platform": sys.platform}
+    p = State.proxy
+    return {"ok": True, "browsers_open": sum(1 for b in State.browsers.values() if b.ctx), "platform": sys.platform,
+            "egress_proxy": {"requests": p.requests, "blocked": p.blocked[-10:]} if p else None}
 
 
 if __name__ == "__main__":

@@ -1,6 +1,6 @@
 import re
 
-from sqlalchemy import func, or_, select, text
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from .db import utcnow

@@ -129,6 +129,26 @@
    "type": "object"
   }
  },
+ "calculate": {
+  "effect": "read",
+  "description": "Evaluate arithmetic exactly. Use it for EVERY derived number (totals, differences, percentages, averages) instead of computing in your head.",
+  "parameters": {
+   "properties": {
+    "expression": {
+     "description": "Arithmetic such as (135-120)/120*100. Operators + - * / // % ** and round, abs, min, max, sum, avg, sqrt. No thousands separators.",
+     "maxLength": 500,
+     "minLength": 1,
+     "title": "Expression",
+     "type": "string"
+    }
+   },
+   "required": [
+    "expression"
+   ],
+   "title": "CalcA",
+   "type": "object"
+  }
+ },
  "run_command": {
   "effect": "shell",
   "description": "Run a program with an argument array inside the task environment (no shell)",

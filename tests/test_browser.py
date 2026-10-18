@@ -3,7 +3,6 @@ import threading
 import time
 
 import httpx
-
 from conftest import FIXTURE, call, drain, set_scripts, start_computer
 
 
@@ -78,8 +77,8 @@ def test_login_persistence_expiry_and_takeover(client, procs):
     assert client.task(tid3)["blocker"]["kind"] == "session_expired"
 
     # The sensitive keystrokes never reached any transcript, event or audit log
-    from sqlalchemy import text
     from localcrew.db import session_scope
+    from sqlalchemy import text
     with session_scope() as db:
         for table in ("task_events", "audit_events", "messages", "tool_calls", "task_steps"):
             dump = str(db.execute(text(f"select * from {table}")).all())
@@ -140,7 +139,7 @@ def test_concurrent_browser_access_serialized(client):
     client.ok("post", "/api/computer/release")
     from localcrew.config import settings
     s = settings()
-    h = {"X-Internal-Token": s.computer_token}
+    h = {"X-Internal-Token": s.internal_token()}
     body = lambda tid: {"user_id": client.user_id, "task_id": tid, "url": f"{FIXTURE}/"}  # noqa: E731
     a = httpx.post(f"{s.computer_url}/browser/open", json=body("task-a"), headers=h, timeout=30)
     assert a.status_code == 200

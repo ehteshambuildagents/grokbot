@@ -25,12 +25,34 @@ Local state on this machine (not in git): `.local/pgsql`, `.local/pgdata` (DB on
 `.local/data`, `.local/keys/secrets.key`, `.local/dev-credentials.txt` (generated dev-only test account),
 `.local/logs`.
 
+## 2026-10-18: session 2 (verification pass before publication)
+
+Found and fixed (each has a regression test):
+- **Workspace escape via Windows junction**: file search returned contents of a file outside the workspace.
+- **DNS rebinding**: check-then-connect was exploitable (demonstrated in a test). Added pinned resolution for
+  server-side HTTP and a pinning egress proxy for all Chromium traffic.
+- **Ollama cancellation did not work during prompt evaluation** (took 60 s). Now uses socket shutdown from a
+  watchdog; ~1.5 s.
+- **Terminal**: large output could deadlock until timeout; there were no memory or process limits on Windows. Added
+  Job Objects, output draining and caps.
+- **Wrong reports could succeed**: added `calculate`, numeric grounding with narrow recomputation, structure and
+  content checks, a repair turn, and Markdown extraction from chatty answers. Real-model trials then found three
+  more false acceptances (clock time as evidence, 4 × 12.5 recomputation, "+50%"); fixed and regression-tested.
+- Repair turns ignored a corrected final answer when the deliverable already existed.
+- SSE endpoints held a DB connection "idle in transaction" for the whole stream.
+- Hard-coded default internal token; lint findings (ruff, ESLint react-hooks).
+- Default model switched to `qwen2.5:3b` based on trial results (license caveat documented).
+
+Publication: history rewritten before the first push (author → GitHub noreply address, local path scrubbed from a
+test log). No credentials were ever committed.
+
 ## Next steps (suggested order)
 
-1. Run the suite under Docker Compose on a Linux host (BACKLOG #1).
-2. SSRF DNS pinning (#2) and the remaining unverified security rows.
-3. Measure memory retrieval before considering embeddings.
-4. Voice dictation (whisper.cpp) as the first slice-F capability.
+1. Check the GitHub Actions results (Linux + Docker); fix anything Linux-specific (BACKLOG #1).
+2. Terminal isolation (separate network-less container), shell-ambiguity and password-field tests (BACKLOG #2–#4).
+3. Improve report success rates: an Apache-2.0 model in the 3–4B class (evaluate before switching), and
+   skill-defined output contracts for completeness checks.
+4. Measure memory retrieval before considering embeddings; voice dictation as the first slice-F capability.
 
 ## Conventions
 

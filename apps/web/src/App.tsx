@@ -62,20 +62,20 @@ function Shell({ user, onLogout }: { user: User; onLogout: () => void }) {
   const [pending, setPending] = useState(0);
   const events = useMemo(() => new EventBus(), []);
   const groups = useLoad(() => api<Conversation[]>("/api/conversations?kind=group"), [hash.startsWith("#/group")]);
-  const refreshBots = useCallback(async () => setBots(await api<Bot[]>("/api/bots")), []);
+  const refreshBots = useCallback(() => api<Bot[]>("/api/bots").then(setBots), []);
   const toast = useCallback((msg: string, kind: "ok" | "err" = "ok") => {
     const id = Date.now() + Math.random();
     setToasts((t) => [...t, { id, msg, kind }]);
     setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 5000);
   }, []);
   const go = useCallback((h: string) => { location.hash = h; setNavOpen(false); }, []);
-  const loadPending = () => api<any[]>("/api/approvals").then((a) => setPending(a.length)).catch(() => {});
-  useEffect(() => { refreshBots(); loadPending(); }, []);
+  const loadPending = useCallback(() => api<any[]>("/api/approvals").then((a) => setPending(a.length)).catch(() => {}), []);
+  useEffect(() => { refreshBots(); loadPending(); }, [refreshBots, loadPending]);
   useEffect(() => subscribe((e) => {
     events.emit(e);
     if (e.type === "approval_requested" || (e.type === "status" && e.data.approval)) loadPending();
     if (e.type === "notification") toast(e.data.kind === "routine_failed" ? `Routine failed: ${e.data.error}` : "Notification", "err");
-  }, -1), []);
+  }, -1), [events, loadPending, toast]);
 
   const [, route, id, sub] = hash.split("/");
   let main: React.ReactNode;

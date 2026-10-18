@@ -7,7 +7,7 @@ x-app-env: &app-env
   LOCALCREW_DATA_DIR: /data
   LOCALCREW_SECRET_KEY_FILE: /keys/secrets.key
   LOCALCREW_OLLAMA_URL: ${LOCALCREW_OLLAMA_URL:-http://host.docker.internal:11434}
-  LOCALCREW_DEFAULT_MODEL: ${LOCALCREW_DEFAULT_MODEL:-qwen2.5:1.5b}
+  LOCALCREW_DEFAULT_MODEL: ${LOCALCREW_DEFAULT_MODEL:-qwen2.5:3b}
   LOCALCREW_COMPUTER_URL: http://computer:8765
   LOCALCREW_COMPUTER_TOKEN: ${LOCALCREW_COMPUTER_TOKEN:?set LOCALCREW_COMPUTER_TOKEN in .env}
   LOCALCREW_PUBLIC_ORIGIN: ${LOCALCREW_PUBLIC_ORIGIN:-http://127.0.0.1:8000}
@@ -75,7 +75,7 @@ services:
     pids_limit: 512
     mem_limit: 3g
     healthcheck:
-      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://127.0.0.1:8765/health').raise_for_status()"]
+      test: ["CMD", "python3", "-c", "import httpx; httpx.get('http://127.0.0.1:8765/health').raise_for_status()"]
       interval: 10s
       retries: 10
     restart: unless-stopped

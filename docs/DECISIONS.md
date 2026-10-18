@@ -102,3 +102,26 @@ CDP `Page.startScreencast` over WebSocket (BACKLOG #13).
 
 Natural-language schedules map to cron through a small deterministic parser (`routines.parse_schedule`). The user
 must confirm the preview (`confirmed=true`). Unknown phrases are rejected, not guessed by a model.
+
+## ADR-014 Verification pass (2026-10-18, session 2)
+
+- **DNS pinning.** `security.resolve_checked` resolves once and validates every address (`is_global` only, IPv4-mapped
+  handled). `safe_http_client` swaps httpcore's network backend so the connection goes to that validated address.
+  The previous "check, then let httpx resolve again" pattern was demonstrably rebindable (see
+  `test_dns_rebinding_blocked_for_http_client`).
+- **Browser egress proxy.** Chromium resolves names itself, so all of its traffic (loopback included, via
+  `<-loopback>`) goes through `services/computer/egress_proxy.py`, which applies the same resolve-once rule. The page
+  route guard stays as a second layer.
+- **Terminal limits.** Windows: one Job Object per command, created suspended, assigned, then resumed (memory, process
+  count, kill-on-close). POSIX: rlimits plus a process group. Output is drained continuously. Filesystem and network
+  isolation remain a deployment property (container/VM), not something this code provides natively.
+- **Model cancellation.** Ollama sends no headers until the first token, so cancellation shuts the socket down from a
+  watchdog thread (stdlib `http.client`, socket available right after connect). Ollama stops on disconnect.
+- **Output validation (no LLM judge).** Structure checks, content checks (non-answers, ignored input figures, embedded
+  markdown fences) and numeric grounding: each number must appear in the request or a tool result, or be recomputable
+  in one step from the user's figures (exact match for integers). One repair turn, then the task fails. A file
+  existing is never enough to succeed. A `calculate` tool (AST whitelist) gives models exact arithmetic.
+- **Internal token.** No hard-coded default. If not configured, a random per-install token is created next to the
+  secret key file.
+- **Links.** Junctions and every other reparse point count as links. Hard-linked files are refused. Search never
+  descends into links (a junction previously leaked file contents through search).

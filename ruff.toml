@@ -1,0 +1,16 @@
+line-length = 170
+target-version = "py313"
+extend-exclude = ["services/api/migrations/versions"]
+
+[lint]
+select = ["E", "F", "W", "B", "S", "UP", "I", "BLE"]
+ignore = [
+  "S101",   # asserts are used in tests
+  "S603", "S607",  # subprocess with argv lists is the intended design (terminal tool, ops scripts)
+  "B008",   # FastAPI Depends() defaults
+  "UP007",
+]
+
+[lint.per-file-ignores]
+"tests/**" = ["S", "B", "BLE"]
+"infra/scripts/*" = ["S"]

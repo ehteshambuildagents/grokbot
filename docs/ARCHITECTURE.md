@@ -74,13 +74,25 @@ execution environments (see "Multi-user isolation").
 4. **Worker ↔ computer service**: shared internal token; the computer service has no DB credentials or key file.
    In Compose it sits on an internal network plus an egress network. It never mounts the Docker socket or the
    host home directory.
-5. **Computer service ↔ web**: SSRF guard on navigation and all sub-requests (private, loopback, link-local and
-   metadata ranges blocked, except an explicit fixture allowlist). Password/MFA/CAPTCHA pages pause automation.
+5. **Computer service ↔ web**: every Chromium request goes through the computer service's loopback egress proxy.
+   The proxy resolves each destination once, refuses non-global addresses (private, loopback, link-local, CGNAT,
+   metadata, IPv4-mapped forms) unless `host:port` is explicitly allowlisted, and connects to exactly the address it
+   validated, which closes the DNS-rebinding window. A page route guard adds a second check. Server-side fetches
+   (`fetch_url`, connectors) use the same resolve-once rule through a pinned httpx backend. Password/MFA/CAPTCHA
+   pages pause automation.
 6. **Secrets at rest**: Fernet ciphertext in PostgreSQL. Keys live in a separate file (`LOCALCREW_SECRET_KEY_FILE`),
    rotatable with `ops.py rotate-keys`. Back up the key file separately.
 
-Known gaps (also in CAPABILITIES/BACKLOG): DNS-rebinding TOCTOU in the SSRF guard, no per-process network policy
-for native terminals, an in-memory login rate limit, and a single shared internal token.
+7. **Outputs ↔ "success"**: a task succeeds only after deterministic validation: structure, content (no
+   non-answers, uses the given figures) and numeric grounding with recomputation. The model gets one repair turn;
+   then the task fails. `services/api/localcrew/validation.py`.
+8. **Terminal**: argv only (shell separately gated), approval required by default, scrubbed environment, workspace
+   cwd, Windows Job Object or POSIX rlimit limits, process-tree kill. Natively a command runs **as the user running
+   LocalCrew** and can read anything that user can, which is why commands need approval. Real filesystem and
+   network isolation needs the container (and, for untrusted users, a VM).
+
+Known gaps (also in CAPABILITIES/BACKLOG): no per-process network policy for terminal commands (in Compose they share
+the computer container's egress network), an in-memory login rate limit, and a single shared internal token.
 
 ## Browser concurrency (ADR-008)
 

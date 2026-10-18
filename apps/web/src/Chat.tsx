@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ACTIVE, WAITING, api, fmtTime, type Bot, type Message, type Task } from "./api";
 import { Button, ErrorBox, Loading, RichText, Status, cx, inputCls, useApp, useEvents, useLoad } from "./ui";
 
@@ -12,11 +12,9 @@ export function Conversation({ convId, bots, title }: { convId: string; bots: Bo
   const endRef = useRef<HTMLDivElement>(null);
   const botById = useMemo(() => Object.fromEntries(bots.map((b) => [b.id, b])), [bots]);
 
-  const loadTasks = async () => {
-    const list = await api<Task[]>(`/api/tasks?limit=50`);
-    setTasks(Object.fromEntries(list.filter((t) => t.conversation_id === convId).map((t) => [t.id, t])));
-  };
-  useEffect(() => { loadTasks(); }, [convId]);
+  const loadTasks = useCallback(() => api<Task[]>(`/api/tasks?limit=50`)
+    .then((list) => setTasks(Object.fromEntries(list.filter((t) => t.conversation_id === convId).map((t) => [t.id, t])))), [convId]);
+  useEffect(() => { loadTasks(); }, [loadTasks]);
   useEffect(() => { endRef.current?.scrollIntoView({ block: "end" }); }, [msgs.data?.length, deltas]);
 
   useEvents((e) => {
@@ -29,7 +27,7 @@ export function Conversation({ convId, bots, title }: { convId: string; bots: Bo
         msgs.reload();
       }
     }
-  }, [convId]);
+  });
 
   const live = Object.values(tasks).filter((t) => ACTIVE.includes(t.status) || WAITING.includes(t.status));
 
@@ -150,7 +148,7 @@ function Blocker({ t, act }: { t: Task; act: (p: string, b?: unknown) => void })
 export function TaskDetail({ id }: { id: string }) {
   const { user } = useApp();
   const d = useLoad(() => api<any>(`/api/tasks/${id}`), [id]);
-  useEvents((e) => { if (e.task_id === id && e.type !== "delta") d.reload(); }, [id]);
+  useEvents((e) => { if (e.task_id === id && e.type !== "delta") d.reload(); });
   if (d.error) return <ErrorBox error={d.error} />;
   if (!d.data) return <Loading />;
   const t = d.data;

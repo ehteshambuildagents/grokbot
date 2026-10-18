@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api, fmtTime, type Bot, type Conversation, type Task } from "./api";
 import { TaskDetail } from "./Chat";
 import { Button, Dialog, Empty, ErrorBox, Field, Loading, Page, Status, cx, inputCls, useApp, useEvents, useLoad } from "./ui";
@@ -11,12 +11,10 @@ export function BotEditor({ id }: { id?: string }) {
   const tools = useLoad(() => api<any[]>("/api/tools"));
   const models = useLoad(() => api<any>("/api/models"));
   const existing = useLoad(() => (id ? api<Bot>(`/api/bots/${id}`) : Promise.resolve(null)), [id]);
-  const [f, setF] = useState<any>(null);
+  const [edits, setF] = useState<any>(null);
   const [impact, setImpact] = useState<any>(null);
-  useEffect(() => {
-    if (existing.data) setF(existing.data);
-    else if (!id && tools.data) setF({ name: "", avatar: "🤖", role: "", instructions: "", model: "", tools: tools.data.filter((t) => t.default).map((t) => t.name), policy_profile: "standard", memory_enabled: true });
-  }, [existing.data, tools.data, id]);
+  const f = edits ?? existing.data ?? (!id && tools.data ? { name: "", avatar: "🤖", role: "", instructions: "", model: "",
+    tools: tools.data.filter((t) => t.default).map((t) => t.name), policy_profile: "standard", memory_enabled: true } : null);
   if (existing.error) return <Page title="Bot"><ErrorBox error={existing.error} /></Page>;
   if (!f || !tools.data) return <Loading />;
   const set = (k: string, v: any) => setF({ ...f, [k]: v });
@@ -45,7 +43,7 @@ export function BotEditor({ id }: { id?: string }) {
         <Field label="Model" hint={chosen ? `tools: ${chosen.tools ? "yes" : "no"} · vision: ${chosen.vision ? "yes" : "no"} · context ${chosen.context_length}` : models.data?.ollama?.ok === false ? "Ollama is not reachable" : ""}>
           <select className={inputCls} value={f.model} onChange={(e) => set("model", e.target.value)}>
             <option value="">Default ({models.data?.default ?? "…"})</option>
-            {models.data?.models?.map((m: any) => <option key={m.name} value={m.name}>{m.name}</option>)}
+            {models.data?.models?.map((m: any) => <option key={m.name} value={m.name}>{m.name}{m.remote ? " (API: data leaves this machine)" : ""}</option>)}
           </select>
         </Field>
         <Field label="Policy profile" hint="standard: external writes & commands need approval · cautious: workspace writes too · read_only: no writes">
@@ -186,11 +184,9 @@ export function Computer() {
   const [sensitive, setSensitive] = useState(false);
   const [recording, setRecording] = useState<any[] | null>(null);
   const imgRef = useRef<HTMLImageElement>(null);
-  const refresh = async () => {
-    try { setStatus(await api("/api/computer/status")); setShot(await api("/api/computer/screenshot")); setError(""); }
-    catch (e: any) { setError(e.message); }
-  };
-  useEffect(() => { refresh(); const t = setInterval(refresh, 1500); return () => clearInterval(t); }, []);
+  const refresh = useCallback(() => Promise.all([api("/api/computer/status"), api("/api/computer/screenshot")])
+    .then(([st, sh]) => { setStatus(st); setShot(sh); setError(""); }, (e: any) => setError(e.message)), []);
+  useEffect(() => { refresh(); const t = setInterval(refresh, 1500); return () => clearInterval(t); }, [refresh]);
   const human = status?.controller === "human";
   const act = async (body: any) => { try { await api("/api/computer/act", { body }); refresh(); } catch (e: any) { toast(e.message, "err"); } };
   return (
@@ -447,8 +443,10 @@ export function Settings() {
       </section>
       <section className="mb-6 rounded-xl border border-line bg-panel p-4 text-sm">
         <h2 className="mb-2 font-medium">Models & privacy</h2>
-        <p>All inference runs locally through Ollama. Default model: <code>{models.data?.default}</code>.</p>
-        <p className="text-muted">Remote providers: {models.data?.remote_providers?.implemented ? "available" : "not implemented"} · data leaving this machine: {models.data?.remote_providers?.data_leaving_machine}</p>
+        <p>Local models run through Ollama. Default model: <code>{models.data?.default}</code>.</p>
+        <p className={models.data?.remote_providers?.enabled ? "mt-1 rounded bg-amber-50 p-2 text-amber-900 dark:bg-amber-950 dark:text-amber-100" : "text-muted"}>
+          Model API ({models.data?.remote_providers?.kind}): {models.data?.remote_providers?.enabled ? `enabled (${models.data.remote_providers.host})` : "disabled"} · {models.data?.remote_providers?.data_leaving_machine}
+        </p>
         <ul className="mt-2 list-disc pl-5">{models.data?.models?.map((m: any) => <li key={m.name}><code>{m.name}</code> — tools {m.tools ? "✓" : "✗"}, vision {m.vision ? "✓" : "✗"}, context {m.context_length}</li>)}</ul>
       </section>
       <section className="rounded-xl border border-line bg-panel p-4 text-sm">

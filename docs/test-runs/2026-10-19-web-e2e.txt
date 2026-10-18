@@ -1,0 +1,38 @@
+
+> @localcrew/web@0.1.0 lint
+> eslint .
+
+
+> @localcrew/web@0.1.0 build
+> tsc --noEmit && vite build
+
+vite v8.3.4 building client environment for production...
+transforming...
+✓ 20 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                   0.53 kB │ gzip:  0.32 kB
+dist/assets/index-jwGEiXyu.css   20.93 kB │ gzip:  5.31 kB
+dist/assets/index-DH5Mki5J.js   284.66 kB │ gzip: 85.05 kB
+
+✓ built in 310ms
+[WebServer] 2026-10-19 04:50:43,621 localcrew.worker INFO worker <host>-13792-3644ec started with 2 task threads
+[WebServer] INFO:     Started server process [19348]
+[WebServer] INFO:     Waiting for application startup.
+[WebServer] INFO:     Application startup complete.
+[WebServer] INFO:     Uvicorn running on http://127.0.0.1:18766 (Press CTRL+C to quit)
+
+Running 6 tests using 1 worker
+
+[WebServer] 2026-10-19 04:50:46,392 localcrew.worker INFO running task 29406169a3ed47bdae5c3e07516eb4d4
+[WebServer] 2026-10-19 04:50:46,963 httpx INFO HTTP Request: POST http://127.0.0.1:18766/browser/release "HTTP/1.1 200 OK"
+  ok 1 [desktop] › e2e\smoke.spec.ts:15:1 › create a bot, chat (MOCK model), receive a downloadable deliverable (2.2s)
+  ok 2 [desktop] › e2e\smoke.spec.ts:39:1 › keyboard navigation and responsive navigation (1.4s)
+  ok 3 [desktop] › e2e\smoke.spec.ts:53:1 › rejects stored XSS in messages (rendered as text) (547ms)
+[WebServer] 2026-10-19 04:50:51,038 localcrew.worker INFO running task b19c5b5f4c884a68979ca544f4ecde7f
+[WebServer] 2026-10-19 04:50:51,356 httpx INFO HTTP Request: POST http://127.0.0.1:18766/browser/release "HTTP/1.1 200 OK"
+  ok 4 [phone] › e2e\smoke.spec.ts:15:1 › create a bot, chat (MOCK model), receive a downloadable deliverable (1.9s)
+  ok 5 [phone] › e2e\smoke.spec.ts:39:1 › keyboard navigation and responsive navigation (1.7s)
+  ok 6 [phone] › e2e\smoke.spec.ts:53:1 › rejects stored XSS in messages (rendered as text) (509ms)
+
+  6 passed (16.2s)
