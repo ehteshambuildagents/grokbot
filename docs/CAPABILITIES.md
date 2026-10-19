@@ -1,6 +1,6 @@
 # Capability matrix
 
-Status as of 2026-10-18 (verification pass 2) on the development host (Windows 11, i7-1265U, 15.6 GB RAM, no GPU,
+Status for v0.3.0 (2026-10-19). Local results are from the reference machine (Windows 11, i7-1265U, 15.6 GB RAM, no GPU,
 no Docker/WSL). Linux/Docker rows marked **CI** are verified only by the GitHub Actions run named in TEST_REPORT.
 Statuses:
 
@@ -110,7 +110,10 @@ engine, policy and tool mechanics, not model quality. Real-model results are in 
 | Connector interface (capabilities, schemas, auth, scopes, rate limit, read/write class, health, revoke) | Tested | `test_secrets_encrypted_at_rest_and_redacted` |
 | Local-files connector | Tested | `test_local_files_connector` |
 | Local fixture issue-tracker connector (idempotency + reconcile) | Tested | approval + ambiguous-write tests |
-| MCP adapter, Slack, X | Unavailable | see docs/BACKLOG.md |
+| MCP servers (any number; stdio and Streamable HTTP), auto-discovered tools, per-bot or per-server enablement | Tested | `tests/test_mcp.py` (real MCP protocol via the official SDK against a fixture server) |
+| MCP tools under policy: schema validation, annotation-based effect classes, approvals, wildcard rules, redaction, cancellation, secret injection | Tested | same |
+| MCP resources, prompts, sampling, OAuth-based MCP auth | Unavailable | tools only; tokens via env var or header |
+| Slack, X connectors | Unavailable | see docs/BACKLOG.md |
 | Policy outside the model: allow / deny / require approval; deny wins; org not relaxable; bot rules only tighten | Tested | `test_persistent_rule_is_narrow_and_org_deny_wins` |
 | Approval cards (target, identity, payload, effect, expiry, scope) bound to action digest | Tested | `test_approval_card_and_allow_once` |
 | Denial, expiry, replay rejection, changed-payload rejection | Tested | `test_approval_denied/expired`, `…_card_and_allow_once`, `test_changed_payload_invalidates_approval` |
@@ -157,8 +160,8 @@ engine, policy and tool mechanics, not model quality. Real-model results are in 
 
 | Capability | Status | Evidence / notes |
 |---|---|---|
-| Native launcher (`infra/scripts/run_local.py`), portable PostgreSQL setup | Tested | used throughout this session |
-| Docker Compose with health checks, unprivileged containers, no Docker socket / home mounts | Tested (CI) | `infra/scripts/docker_smoke.sh` passed in GitHub Actions run 39179076104; not runnable on the dev host |
+| Native launcher (`infra/scripts/run_local.py`), portable PostgreSQL setup | Tested | used for all local development and acceptance runs |
+| Docker Compose with health checks, unprivileged containers, no Docker socket / home mounts | Tested (CI) | `infra/scripts/docker_smoke.sh` passed in GitHub Actions run 39179076104; not runnable on the reference machine (no Docker) |
 | Alembic migrations | Tested | every test run migrates a fresh schema |
 | Backup / restore into a clean DB + data dir + key file; checksum verification | Tested | `test_backup_restore_into_clean_environment` |
 | Upgrade path (restore then `alembic upgrade head`) | Unverified | only one schema revision exists |

@@ -1,7 +1,7 @@
 # Engineering decisions (ADR log)
 
-Newest last. Each entry: context → decision → consequence. Another session should read this,
-`docs/PROGRESS.md`, and `docs/CAPABILITIES.md` before changing anything.
+Newest last. Each entry: context → decision → consequence. Read this with `docs/CAPABILITIES.md` and
+`CHANGELOG.md` before changing core behaviour.
 
 ## ADR-001 Host inspection (2026-10-18)
 
@@ -17,7 +17,7 @@ Inspected host:
 | Runtimes | Python 3.13.15, Node 24.19.0, npm 11.17.0, git 2.55 |
 | Docker / WSL | **Not installed.** WSL not enabled. |
 | PostgreSQL | Not installed |
-| Ollama | Not installed (installed during this session with user approval, per-user, via winget) |
+| Ollama | Not installed initially; installed per-user via winget |
 
 ## ADR-002 Keep the specified architecture; run it natively on this host
 
@@ -48,7 +48,7 @@ Rationale: avoid duplicating models in three packages while keeping process isol
 Tasks are claimed with `SELECT … FOR UPDATE SKIP LOCKED`, leased (`lease_owner`, `lease_expires_at`),
 heart-beaten every few seconds, and re-claimed after lease expiry (crash recovery). No Redis.
 Event stream = `task_events` table (bigserial id) replayed over SSE with `Last-Event-ID`.
-`ponytail:` SSE polls the table every 0.5 s; switch to LISTEN/NOTIFY if many clients connect.
+Trade-off: SSE polls the table every 0.5 s. Switch to LISTEN/NOTIFY if many clients connect.
 
 ## ADR-005 Models chosen by measurement on this CPU-only host
 
@@ -103,7 +103,7 @@ CDP `Page.startScreencast` over WebSocket (BACKLOG #13).
 Natural-language schedules map to cron through a small deterministic parser (`routines.parse_schedule`). The user
 must confirm the preview (`confirmed=true`). Unknown phrases are rejected, not guessed by a model.
 
-## ADR-014 Verification pass (2026-10-18, session 2)
+## ADR-014 Hardening and validation (v0.2.0)
 
 - **DNS pinning.** `security.resolve_checked` resolves once and validates every address (`is_global` only, IPv4-mapped
   handled). `safe_http_client` swaps httpcore's network backend so the connection goes to that validated address.
@@ -125,3 +125,15 @@ must confirm the preview (`confirmed=true`). Unknown phrases are rejected, not g
   secret key file.
 - **Links.** Junctions and every other reparse point count as links. Hard-linked files are refused. Search never
   descends into links (a junction previously leaked file contents through search).
+
+## ADR-015 MCP servers as connections, executed in the computer service (v0.3.0)
+
+Context: users want to plug in many external tool servers without code changes.
+Decision: implement the MCP client (official Python SDK, v2) in the computer service, the existing execution
+boundary, with one long-lived session per server. Stdio servers start through a launcher that applies the terminal
+sandbox limits. Tools become regular LocalCrew tools: JSON-Schema validation, policy, approvals, idempotency keys,
+untrusted-output wrapping. Server annotations can only mark a tool read-only or destructive; everything else is an
+external write and needs approval by default.
+Consequence: MCP servers run as code the user chose to install, with the same privileges as the computer service.
+Natively that is the user's account; in Docker, the unprivileged computer container. Resources, prompts and OAuth
+are out of scope for now.

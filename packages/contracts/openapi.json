@@ -2496,6 +2496,43 @@
     }
    }
   },
+  "/api/connections/{cid}/discover": {
+   "post": {
+    "summary": "Discover Connection",
+    "operationId": "discover_connection_api_connections__cid__discover_post",
+    "parameters": [
+     {
+      "name": "cid",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Cid"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
   "/api/connections/{cid}/health": {
    "get": {
     "summary": "Connection Health",

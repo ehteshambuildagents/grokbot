@@ -55,6 +55,15 @@ The API/worker authenticate to the computer service with a shared token. Nativel
 not set, a random token is created at `.local/keys/computer.token` on first use. All three processes read it. In
 Compose, set `LOCALCREW_COMPUTER_TOKEN` in `.env`. Rotate by changing it and restarting all services.
 
+## MCP servers
+
+Add servers under Connections → MCP servers. Stdio servers run inside the computer service, so their runtime (Node
+for `npx`, `uv` for `uvx`, Python packages) must be installed where the computer service runs. In Docker, extend
+`infra/docker/computer.Dockerfile` (e.g. `RUN apt-get install -y nodejs npm`). Limits: `LOCALCREW_MCP_MEMORY_MB`
+(default 4096) and `LOCALCREW_MCP_MAX_PROCS` (default 64). Each server gets a scratch directory under
+`<data>/mcp/<user>/<connection>`. If a server fails to start, its error is shown on the connection; use
+"Re-discover" after fixing it.
+
 ## Secret-key rotation
 
 ```bash

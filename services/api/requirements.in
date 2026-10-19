@@ -14,5 +14,8 @@ croniter==6.2.4
 tzdata==2026.5
 python-multipart==0.0.32
 pypdf==6.21.1
+mcp==2.3.0
+jsonschema==4.26.0
 # test
 pytest==9.1.1
+ruff==0.17.1

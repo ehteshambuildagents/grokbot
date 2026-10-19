@@ -6,7 +6,8 @@ pinned versions in `services/api/requirements.lock` and `apps/web/package-lock.j
 
 - Permissive (MIT, BSD-2/3-Clause, Apache-2.0, PSF-2.0, MIT-0): FastAPI, Starlette, Uvicorn, SQLAlchemy, Alembic,
   Pydantic, httpx/httpcore, Playwright (Python), argon2-cffi, cryptography, croniter, tzdata, python-multipart, pypdf,
-  React, React DOM, Vite, Tailwind CSS, TypeScript, ESLint, and their transitive dependencies.
+  React, React DOM, Vite, Tailwind CSS, TypeScript, ESLint, the MCP Python SDK (`mcp`, MIT), jsonschema (MIT), httpx2
+  (BSD-3-Clause), and their transitive dependencies (pywin32 on Windows: PSF).
 - **psycopg / psycopg-binary: LGPL-3.0-only.** Used unmodified as a dynamically imported library. If you distribute
   images that contain it, keep its license and allow users to replace it (pip install of a different build satisfies this).
 - **certifi: MPL-2.0.** Used unmodified.

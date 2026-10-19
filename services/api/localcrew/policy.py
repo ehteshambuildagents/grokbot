@@ -45,7 +45,8 @@ class Action:
 
 
 def _matches(rule: PolicyRule, a: Action) -> bool:
-    tool_ok = rule.tool in ("*", a.tool, f"effect:{a.effect}")
+    tool_ok = rule.tool in ("*", a.tool, f"effect:{a.effect}") or (
+        rule.tool.endswith("*") and len(rule.tool) > 1 and a.tool.startswith(rule.tool[:-1]))  # e.g. mcp__github__*
     return tool_ok and rule.target in ("*", a.target) and rule.bot_id in (None, a.bot_id)
 
 

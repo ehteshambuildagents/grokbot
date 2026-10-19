@@ -224,7 +224,7 @@ class BotIn(BaseModel):
     @field_validator("tools")
     @classmethod
     def known(cls, v):
-        bad = [t for t in v if t not in TOOLS]
+        bad = [t for t in v if t not in TOOLS and not t.startswith(("mcp__", "mcp:"))]  # MCP tools resolve at run time
         if bad:
             raise ValueError(f"unknown tools: {bad}")
         return v
@@ -259,9 +259,13 @@ def list_bots(include_hidden: bool = False, user: User = Depends(current_user), 
 
 
 @app.get("/api/tools")
-def list_tools(user: User = Depends(current_user)):
-    return [{"name": t.name, "description": t.description, "effect": t.effect, "default": t.name in DEFAULT_TOOLS}
-            for t in TOOLS.values()]
+def list_tools(user: User = Depends(current_user), db: Session = Depends(get_db)):
+    from .mcp_tools import effect_of, user_tools
+    builtin = [{"name": t.name, "description": t.description, "effect": t.effect, "default": t.name in DEFAULT_TOOLS}
+               for t in TOOLS.values()]
+    mcp = [{"name": n, "description": t.get("description", ""), "effect": effect_of(t), "default": False,
+            "mcp_server": c.name, "mcp_connection_id": c.id} for n, (c, t) in user_tools(db, user.id).items()]
+    return builtin + mcp
 
 
 @app.post("/api/bots", status_code=201)

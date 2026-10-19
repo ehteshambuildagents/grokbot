@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, fmtTime, type Bot, type Conversation, type Task } from "./api";
 import { TaskDetail } from "./Chat";
+import { McpServers, ToolPicker } from "./Mcp";
 import { Button, Dialog, Empty, ErrorBox, Field, Loading, Page, Status, cx, inputCls, useApp, useEvents, useLoad } from "./ui";
 
 const err = (toast: any) => (e: any) => toast(e.message ?? String(e), "err");
@@ -54,16 +55,7 @@ export function BotEditor({ id }: { id?: string }) {
         <label className="flex items-center gap-2 pt-6 text-sm"><input type="checkbox" checked={f.memory_enabled} onChange={(e) => set("memory_enabled", e.target.checked)} /> Memory enabled</label>
       </div>
       <div className="mt-4"><Field label="Durable instructions"><textarea rows={5} className={inputCls} value={f.instructions} onChange={(e) => set("instructions", e.target.value)} /></Field></div>
-      <fieldset className="mt-4"><legend className="mb-2 text-sm font-medium">Tools</legend>
-        <div className="grid gap-1 sm:grid-cols-2">
-          {tools.data.map((t) => (
-            <label key={t.name} className="flex items-start gap-2 text-sm">
-              <input type="checkbox" checked={f.tools.includes(t.name)} onChange={(e) => set("tools", e.target.checked ? [...f.tools, t.name] : f.tools.filter((x: string) => x !== t.name))} />
-              <span><code>{t.name}</code> <span className="text-xs text-muted">({t.effect}) {t.description}</span></span>
-            </label>
-          ))}
-        </div>
-      </fieldset>
+      <ToolPicker tools={tools.data} value={f.tools} onChange={(v) => set("tools", v)} />
       <div className="mt-4 flex gap-2"><Button kind="primary" onClick={save} disabled={!f.name}>Save</Button>{id && <Button onClick={() => go(`#/bot/${id}`)}>Back to chat</Button>}</div>
       <Dialog open={!!impact} title={`Delete ${f.name}?`} onClose={() => setImpact(null)}>
         {impact && (
@@ -359,8 +351,10 @@ export function Connections() {
   const [f, setF] = useState({ connector: "fixture_tracker", name: "Fixture tracker", base_url: "http://127.0.0.1:8899", secret: "" });
   return (
     <Page title="Connections">
+      <McpServers />
+      <h2 className="mb-2 font-medium">Other connectors</h2>
       <div className="mb-6 grid gap-3 rounded-xl border border-line bg-panel p-4 md:grid-cols-2">
-        <Field label="Connector"><select className={inputCls} value={f.connector} onChange={(e) => setF({ ...f, connector: e.target.value })}>{cat.data?.available.map((c: any) => <option key={c.key} value={c.key}>{c.title}</option>)}</select></Field>
+        <Field label="Connector"><select className={inputCls} value={f.connector} onChange={(e) => setF({ ...f, connector: e.target.value })}>{cat.data?.available.filter((c: any) => c.key !== "mcp").map((c: any) => <option key={c.key} value={c.key}>{c.title}</option>)}</select></Field>
         <Field label="Name"><input className={inputCls} value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></Field>
         {f.connector === "fixture_tracker" && <>
           <Field label="Base URL"><input className={inputCls} value={f.base_url} onChange={(e) => setF({ ...f, base_url: e.target.value })} /></Field>
@@ -368,7 +362,7 @@ export function Connections() {
         </>}
         <div><Button kind="primary" onClick={async () => { await api("/api/connections", { body: { connector: f.connector, name: f.name, config: f.connector === "fixture_tracker" ? { base_url: f.base_url } : {}, secret: f.secret || null } }).catch(err(toast)); setF({ ...f, secret: "" }); list.reload(); }}>Connect</Button></div>
       </div>
-      <ul className="mb-6 space-y-2">{list.data?.map((c) => (
+      <ul className="mb-6 space-y-2">{list.data?.filter((c) => c.connector !== "mcp").map((c) => (
         <li key={c.id} className="flex flex-wrap items-center gap-2 rounded-lg border border-line bg-panel p-3 text-sm">
           <b>{c.name}</b><span className="text-muted">{c.connector}</span><Status s={c.status === "active" ? "succeeded" : "cancelled"} /><span className="text-xs text-muted">scopes: {c.scopes.join(", ")}</span>
           <Button className="ml-auto" onClick={async () => { const h = await api<any>(`/api/connections/${c.id}/health`).catch(err(toast)); if (h) toast(h.ok ? "Healthy" : `Unhealthy: ${h.error ?? h.status}`, h.ok ? "ok" : "err"); }}>Check health</Button>

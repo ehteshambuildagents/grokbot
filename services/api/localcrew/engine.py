@@ -26,6 +26,7 @@ from .common import emit
 from .config import settings
 from .db import SessionLocal, session_scope, utcnow
 from .llm import Cancelled, ModelError, model_slot, provider_for
+from .mcp_tools import ArgsInvalid
 from .models import ApprovalRequest, Artifact, Bot, Message, RoutineRun, SkillVersion, Task, TaskStep, ToolCall, User
 from .policy import Action, consume_approval, decide, find_or_create_approval
 from .security import Redactor, sha256
@@ -354,13 +355,20 @@ class Runner:
         self.event("status", {"status": "running", "phase": "running"})
         self.save()
 
+    def available_tools(self) -> dict:
+        """Tools this bot may use in this task: enabled built-ins plus enabled tools of connected MCP servers."""
+        if not hasattr(self, "_tools"):
+            from .mcp_tools import bot_tools
+            self._tools = {n: TOOLS[n] for n in (self.bot.tools or []) if n in TOOLS} | bot_tools(self.db, self.bot)
+        return self._tools
+
     def tool_defs(self):
-        enabled = [n for n in (self.bot.tools or []) if n in TOOLS]
+        enabled = self.available_tools()
         caps = self.provider.capabilities(self.model)
         if enabled and not caps.tools:
             self.progress(f"Model {self.model} has no tool-calling support; answering without tools")
             return []
-        return [TOOLS[n].schema() for n in enabled]
+        return [tool.schema() for tool in enabled.values()]
 
     def execute(self):
         t = self.task
@@ -411,7 +419,7 @@ class Runner:
         seq = cp["seq"] + 1
         name, raw = call.get("name") or "", call.get("arguments") or {}
         tc = self.db.scalar(select(ToolCall).where(ToolCall.task_id == t.id, ToolCall.seq == seq))
-        tool = TOOLS.get(name)
+        tool = self.available_tools().get(name)
 
         def done(result: dict, status: str):
             if tc is not None:
@@ -426,12 +434,14 @@ class Runner:
                       target=(tc.args if tc is not None else {}), result_preview=str(result)[:300])
             self.save()
 
-        if tool is None or name not in (self.bot.tools or []):
+        if tool is None:
             return done({"error": f"tool '{name}' is not available to this bot"}, "rejected")
         try:
-            args = tool.args.model_validate(raw)
+            args = tool.validate(raw)
         except ValidationError as e:
             return done({"error": "invalid arguments", "details": json.loads(e.json())[:5]}, "invalid")
+        except ArgsInvalid as e:
+            return done({"error": "invalid arguments", "details": e.details}, "invalid")
 
         action = Action(name, tool.effect, str(tool.target(args))[:500], args.model_dump(), t.owner_user_id, self.bot.id)
         if tc is None:
@@ -636,7 +646,7 @@ class Runner:
 def compact(messages: list[dict], ctx_tokens: int) -> list[dict]:
     """Bound context deterministically: keep system prompt, original objective, user redirects and the last
     turns verbatim; collapse older tool output to short references (tool name + first 300 chars).
-    ponytail: char-based token estimate and truncation, not model summaries; add LLM summaries if long tasks need them."""
+    Trade-off: a char-based token estimate and truncation, not model summaries; add LLM summaries if long tasks need them."""
     budget = max(4000, int(ctx_tokens * 3))
     if sum(len(str(m.get("content", ""))) for m in messages) <= budget:
         return messages

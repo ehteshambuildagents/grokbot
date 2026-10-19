@@ -29,6 +29,7 @@ from fastapi import Depends, FastAPI, Header, HTTPException  # noqa: E402
 from localcrew import workspace  # noqa: E402
 from localcrew.config import settings  # noqa: E402
 from localcrew.security import Redactor, check_url  # noqa: E402
+from mcp_hub import MCPHub  # noqa: E402
 from playwright.async_api import Error as PWError  # noqa: E402
 from playwright.async_api import TimeoutError as PWTimeout  # noqa: E402
 from playwright.async_api import async_playwright  # noqa: E402
@@ -535,7 +536,68 @@ async def cancel(b: CancelB):
                 pass
             ub.holder_kind, ub.holder_id, ub.expires = "none", "", 0
             aborted = True
-    return {"killed_processes": killed, "aborted_browser": aborted}
+    return {"killed_processes": killed, "aborted_browser": aborted, "cancelled_mcp_calls": HUB.cancel(b.task_id)}
+
+
+# ---------------- MCP servers ----------------
+
+HUB = MCPHub(int(os.environ.get("LOCALCREW_MCP_MEMORY_MB", "4096")), int(os.environ.get("LOCALCREW_MCP_MAX_PROCS", "64")))
+
+
+class MCPConn(BaseModel):
+    id: str = Field(pattern=r"^[0-9a-f]{32}$")
+    user_id: str = Field(pattern=r"^[0-9a-f]{32}$")
+    transport: str = Field(pattern="^(stdio|http)$")
+    command: str = ""
+    args: list[str] = Field(default_factory=list, max_length=64)
+    env: dict[str, str] = Field(default_factory=dict)        # secrets already resolved by the caller's broker
+    url: str = ""
+    headers: dict[str, str] = Field(default_factory=dict)    # e.g. Authorization; resolved by the broker
+
+
+class MCPCall(BaseModel):
+    conn: MCPConn
+    tool: str = Field(min_length=1, max_length=200)
+    arguments: dict = Field(default_factory=dict)
+    timeout_s: int = Field(120, ge=1, le=900)
+    task_id: str = ""
+
+
+def _conn_dict(c: MCPConn) -> dict:
+    d = c.model_dump()
+    d["home"] = str(settings().data_dir / "mcp" / c.user_id / c.id)  # per-server scratch dir, outside workspaces
+    if c.transport == "stdio" and not c.command:
+        raise HTTPException(400, "stdio MCP server needs a command")
+    if c.transport == "http" and not c.url.startswith(("https://", "http://127.0.0.1", "http://localhost")):
+        raise HTTPException(400, "HTTP MCP servers must use https (plain http only on localhost)")
+    return d
+
+
+@app.post("/mcp/list", dependencies=[Depends(auth)])
+async def mcp_list(c: MCPConn):
+    try:
+        return {"tools": await HUB.list_tools(_conn_dict(c))}
+    except RuntimeError as e:
+        raise HTTPException(502, Redactor.text(str(e))) from e
+
+
+@app.post("/mcp/call", dependencies=[Depends(auth)])
+async def mcp_call(b: MCPCall):
+    if b.task_id in State.cancelled:
+        raise HTTPException(499, "cancelled")
+    try:
+        out = await HUB.call(_conn_dict(b.conn), b.tool, b.arguments, b.timeout_s, b.task_id)
+    except asyncio.CancelledError as e:
+        raise HTTPException(499, "cancelled") from e
+    except (TimeoutError, RuntimeError) as e:
+        raise HTTPException(502, Redactor.text(f"MCP call failed: {e}")) from e
+    return Redactor.obj(out)
+
+
+@app.post("/mcp/close", dependencies=[Depends(auth)])
+async def mcp_close(c: MCPConn):
+    await HUB.close(c.id)
+    return {"closed": True}
 
 
 @app.post("/browser/release", dependencies=[Depends(auth)])

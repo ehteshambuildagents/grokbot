@@ -94,6 +94,26 @@ execution environments (see "Multi-user isolation").
 Known gaps (also in CAPABILITIES/BACKLOG): no per-process network policy for terminal commands (in Compose they share
 the computer container's egress network), an in-memory login rate limit, and a single shared internal token.
 
+## MCP servers (ADR-015)
+
+```
+Bot ─▶ engine.available_tools() ─▶ mcp_tools.bot_tools()  (connections with discovered tool lists)
+          │ JSON-Schema validation · policy.decide() · approval · ToolCall + idempotency key
+          ▼
+     computer service /mcp/call ─▶ MCPHub (one long-lived session per server)
+          ├─ stdio:  mcp_launch.py (Job Object / rlimits, scrubbed env) ─▶ server process
+          └─ HTTP:   Streamable HTTP client (https; secret as header)
+```
+
+- Users add any number of servers (Connections). Discovery stores each server's tools on the connection; bots enable
+  single tools (`mcp__<server>__<tool>`) or whole servers (`mcp:<connection_id>`).
+- Effect class comes from MCP tool annotations: `readOnlyHint` → read; `destructiveHint` → destructive; anything else
+  → external write (approval by default). Annotations are hints from the server, so they can only *relax* to "read";
+  everything unannotated is treated as an external write.
+- Secrets are resolved by the API/worker broker and injected into the server's environment or headers. They are
+  never in prompts, events or tool results (redacted).
+- Revoking a connection closes the session and removes its tools from every bot.
+
 ## Browser concurrency (ADR-008)
 
 Exactly one Chromium persistent context per user profile directory, owned by the computer service process. An

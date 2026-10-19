@@ -20,7 +20,7 @@ Ordered roughly by value. Each item lists what "done" means.
 8. **Recomputation scope**: the one-step derivation check can accept a wrong number that happens to equal some
    combination of the inputs; consider requiring `calculate` provenance for every derived figure in strict mode.
 
-Done in verification pass 2 (2026-10-18): DNS pinning + browser egress proxy; junction/hard-link escapes; Windows
+Done in v0.2.0 (see CHANGELOG): DNS pinning + browser egress proxy; junction/hard-link escapes; Windows
 Job Object limits and output draining; real Ollama cancellation; deterministic calculation and output validation;
 lint (ruff, ESLint); CI on Linux with a Docker Compose smoke test.
 
@@ -28,7 +28,8 @@ lint (ruff, ESLint); CI on Linux with a Docker Compose smoke test.
 9. **Embeddings for memory**, only if a retrieval eval (to be written: queries + expected memory ids) shows FTS
    misses. Use Ollama `nomic-embed-text` + pgvector.
 10. **LLM-based context summaries** for very long tasks, replacing the deterministic compaction once measured.
-11. **MCP adapter** as a connector type (stdio servers in the computer sandbox), with per-tool effect classes.
+11. **MCP beyond tools**: resources and prompts, OAuth 2.1 authorization for remote servers, per-server network
+    policy for stdio servers.
 12. **Office formats**: docx/xlsx read/write via python-docx/openpyxl in the computer service (isolated parsing).
 13. **WebSocket live view** (CDP screencast) instead of 1.5 s screenshot polling.
 14. **Task wait-for-handoff**: let a parent task block until children finish and merge their deliverables.

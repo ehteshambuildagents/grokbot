@@ -10,7 +10,7 @@ import httpx
 from fastapi import APIRouter, Depends, File, Header, HTTPException, Request, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import func, select, text, update
 from sqlalchemy.orm import Session
 
@@ -652,10 +652,39 @@ def list_connections(user: User = Depends(current_user), db: Session = Depends(g
     return [conn_out(c) for c in db.scalars(select(Connection).where(Connection.owner_user_id == user.id))]
 
 
+class MCPConfig(BaseModel):
+    transport: str = Field(pattern="^(stdio|http)$")
+    command: str = Field("", max_length=500)
+    args: list[str] = Field(default_factory=list, max_length=64)
+    url: str = Field("", max_length=2000)
+    env: dict[str, str] = Field(default_factory=dict, description="non-secret environment variables")
+    secret_as: dict = Field(default_factory=lambda: {"kind": "header", "name": "Authorization", "prefix": "Bearer "})
+
+    @field_validator("secret_as")
+    @classmethod
+    def secret_target(cls, v):
+        if v.get("kind") not in ("env", "header") or not str(v.get("name", "")).strip():
+            raise ValueError("secret_as must be {kind: env|header, name: ...}")
+        return v
+
+
 @router.post("/connections", status_code=201)
 def add_connection(body: ConnIn, user: User = Depends(current_user), db: Session = Depends(get_db)):
     if body.connector not in REGISTRY:
         raise HTTPException(400, "unknown or unavailable connector")
+    if body.connector == "mcp":
+        try:
+            cfg = MCPConfig(**body.config)
+        except ValueError as e:
+            raise HTTPException(422, str(e)) from e
+        if cfg.transport == "stdio" and not cfg.command:
+            raise HTTPException(422, "stdio MCP servers need a command")
+        if cfg.transport == "http" and not cfg.url.startswith(("https://", "http://127.0.0.1", "http://localhost")):
+            raise HTTPException(422, "HTTP MCP servers must use https (plain http only on localhost)")
+        if any(c.name.lower() == body.name.lower() for c in db.scalars(select(Connection).where(
+                Connection.owner_user_id == user.id, Connection.connector == "mcp", Connection.status != "revoked"))):
+            raise HTTPException(409, "an MCP server with this name already exists")
+        body.config = cfg.model_dump()
     if "base_url" in body.config:
         from .security import check_url
         try:
@@ -669,12 +698,49 @@ def add_connection(body: ConnIn, user: User = Depends(current_user), db: Session
     db.add(c)
     audit(db, user.id, f"user:{user.id}", "connection.add", c, connector=body.connector)
     db.commit()
+    if c.connector == "mcp":  # discover tools right away; the connection stays (status error) if the server fails
+        from .mcp_tools import discover
+        from .tools import ToolFailed
+        try:
+            discover(db, c)
+        except ToolFailed:
+            pass
+        db.commit()
+    return conn_out(c)
+
+
+@router.post("/connections/{cid}/discover")
+def discover_connection(cid: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    from .mcp_tools import discover
+    from .tools import ToolFailed
+    c = owned(db, Connection, cid, user.id)
+    if c.connector != "mcp" or c.status == "revoked":
+        raise HTTPException(400, "only active MCP connections can be discovered")
+    try:
+        discover(db, c)
+    except ToolFailed as e:
+        db.commit()
+        raise HTTPException(502, f"MCP server error: {e}") from e
+    audit(db, user.id, f"user:{user.id}", "connection.discover", c, tools=len(c.config.get("tools", [])))
+    db.commit()
     return conn_out(c)
 
 
 @router.get("/connections/{cid}/health")
 def connection_health(cid: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
     c = owned(db, Connection, cid, user.id)
+    if c.status == "revoked":
+        return {"ok": False, "status": c.status}
+    if c.connector == "mcp":
+        from .mcp_tools import discover
+        from .tools import ToolFailed
+        try:
+            tools = discover(db, c)
+            db.commit()
+            return {"ok": True, "tools": len(tools)}
+        except ToolFailed as e:
+            db.commit()
+            return {"ok": False, "error": str(e)}
     if c.status != "active":
         return {"ok": False, "status": c.status}
     return REGISTRY[c.connector](db, c).health()
@@ -689,6 +755,12 @@ def revoke_connection(cid: str, user: User = Depends(current_user), db: Session 
         db.query(SecretReference).filter(SecretReference.id == c.secret_id).delete()
     audit(db, user.id, f"user:{user.id}", "connection.revoke", c)
     db.commit()
+    if c.connector == "mcp":  # stop the server process / HTTP session; its tools disappear from all bots
+        try:
+            computer("/mcp/close", {"id": c.id, "user_id": user.id, "transport": c.config.get("transport", "stdio"),
+                                    "command": "x"}, timeout=15)
+        except HTTPException:
+            pass
     return conn_out(db.get(Connection, cid))
 
 

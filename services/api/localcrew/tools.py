@@ -47,17 +47,26 @@ class Ctx:
 class Tool:
     name: str
     description: str
-    args: type[BaseModel]
+    args: type[BaseModel] | None  # built-in tools: a pydantic model
     effect: str
     run: Callable
     target: Callable = lambda a: "*"
     untrusted_output: bool = False
     reconcile: Callable | None = None
     expected_effect: Callable = lambda a: ""
+    parse: Callable | None = None       # external tools (MCP): validate raw arguments against json_schema
+    json_schema: dict | None = None
+
+    def validate(self, raw):
+        """Validate arguments before execution; raises pydantic.ValidationError or mcp_tools.ArgsInvalid."""
+        return self.parse(raw) if self.parse else self.args.model_validate(raw)
 
     def schema(self):
-        s = self.args.model_json_schema()
-        s.pop("title", None)
+        if self.json_schema is not None:
+            s = dict(self.json_schema)
+        else:
+            s = self.args.model_json_schema()
+            s.pop("title", None)
         return {"type": "function", "function": {"name": self.name, "description": self.description, "parameters": s}}
 
 

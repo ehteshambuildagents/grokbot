@@ -143,15 +143,22 @@ class FixtureTracker(Connector):
             return found[0] if found else None
 
 
-REGISTRY: dict[str, type[Connector]] = {c.key: c for c in (LocalFiles, FixtureTracker)}
+class MCPServer(Connector):
+    """Any MCP server (stdio command or Streamable HTTP URL). Its tools are discovered at connect time and exposed to
+    bots as mcp__<server>__<tool>; see mcp_tools.py. Add as many as you like."""
+    key, title, auth = "mcp", "MCP server (any)", "optional token (env var or HTTP header)"
+    requirements = ("A stdio command (runs inside the computer service under the sandbox limits) or an https URL. "
+                    "The server's own requirements apply (runtime such as Node/Python, accounts, API keys).")
+    capabilities = {}
+
+
+REGISTRY: dict[str, type[Connector]] = {c.key: c for c in (LocalFiles, FixtureTracker, MCPServer)}
 
 OPTIONAL = [
     {"key": "slack", "status": "unavailable",
      "requirements": "Separately authorized Slack app, workspace admin approval, current Slack API access."},
     {"key": "x", "status": "unavailable",
      "requirements": "Paid X API tier and app credentials; not implemented."},
-    {"key": "mcp", "status": "unavailable",
-     "requirements": "MCP adapter not implemented (backlog)."},
 ]
 
 
