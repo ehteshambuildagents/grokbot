@@ -30,7 +30,7 @@ services:
 
   migrate:
     build: { context: .., dockerfile: infra/docker/app.Dockerfile }
-    command: ["python", "-m", "alembic", "-c", "services/api/alembic.ini", "upgrade", "head"]
+    command: ["python", "-m", "alembic", "-c", "alembic.ini", "upgrade", "head"]
     working_dir: /app/services/api
     environment: *app-env
     networks: [backend]
