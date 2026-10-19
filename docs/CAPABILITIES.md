@@ -93,12 +93,12 @@ engine, policy and tool mechanics, not model quality. Real-model results are in 
 |---|---|---|
 | argv-only `run_command`; separately gated `run_shell` (off by default) | Tested | `test_terminal_timeout_env_scrub_and_cwd`, `test_shell_requires_approval_by_default` |
 | Timeouts, process-tree kill, scrubbed environment, workspace cwd | Tested | same + cancellation test |
-| Per-command memory and process limits, output cap without pipe deadlock | Tested (Windows) / CI (Linux) | Windows Job Objects: `test_terminal_memory_limit`, `test_terminal_process_limit`, `test_terminal_large_output_is_drained_and_capped`; POSIX rlimits run in the Linux CI job and the Docker smoke test |
+| Per-command memory and process limits, output cap without pipe deadlock | Tested (Windows + Linux CI) | Windows Job Objects: `test_terminal_memory_limit`, `test_terminal_process_limit`, `test_terminal_large_output_is_drained_and_capped`; POSIX rlimits run in the Linux CI job and the Docker smoke test |
 | Terminal filesystem isolation | Unavailable natively | an approved command runs as the LocalCrew user; isolation requires the container/VM deployment |
 | Network control for terminal | Unavailable | natively unrestricted; in Compose the terminal shares the computer container's egress network (browser needs it) |
 | Workspace list/read/write/move/search/soft-delete; versioned overwrites | Tested | file API tests, crash test |
 | Path traversal rejection | Tested | `test_path_traversal_rejected` |
-| Link escapes (symlinks, Windows junctions, other reparse points, hard links) | Tested | junction + hard-link tests on Windows (`test_junction_escape_blocked_everywhere` — this found a real search leak), symlink test runs on Linux CI (skipped on this Windows host) |
+| Link escapes (symlinks, Windows junctions, other reparse points, hard links) | Tested | junction + hard-link tests on Windows (`test_junction_escape_blocked_everywhere` — this found a real search leak), symlink test passes on Linux CI (skipped on this Windows host); backups skip links (CI found the issue) |
 | Upload validation (type, magic bytes, size, archives/executables, encrypted/JS PDFs) | Tested | `test_unsafe_uploads_rejected` |
 | Downloadable artifacts with provenance, versions, owner-only access, `attachment` + sandbox CSP | Tested | `test_task_creates_downloadable_artifact` |
 | Office formats (docx/xlsx/pptx) | Unavailable | backlog |
@@ -158,7 +158,7 @@ engine, policy and tool mechanics, not model quality. Real-model results are in 
 | Capability | Status | Evidence / notes |
 |---|---|---|
 | Native launcher (`infra/scripts/run_local.py`), portable PostgreSQL setup | Tested | used throughout this session |
-| Docker Compose with health checks, unprivileged containers, no Docker socket / home mounts | CI | `infra/scripts/docker_smoke.sh` in the `docker` CI job; not runnable on the dev host |
+| Docker Compose with health checks, unprivileged containers, no Docker socket / home mounts | Tested (CI) | `infra/scripts/docker_smoke.sh` passed in GitHub Actions run 39179076104; not runnable on the dev host |
 | Alembic migrations | Tested | every test run migrates a fresh schema |
 | Backup / restore into a clean DB + data dir + key file; checksum verification | Tested | `test_backup_restore_into_clean_environment` |
 | Upgrade path (restore then `alembic upgrade head`) | Unverified | only one schema revision exists |

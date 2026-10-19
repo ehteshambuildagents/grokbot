@@ -13,10 +13,10 @@ RAM, no GPU, no Docker/WSL. Python 3.13.15, Node 24.19, PostgreSQL 17.6 (portabl
 | Playwright E2E, desktop + phone | `npx playwright test` | **6 passed** ([log](test-runs/2026-10-19-web-e2e.txt)) |
 | Real local-model tests (`-m realmodel`, `qwen2.5:3b`) | `pytest tests/test_realmodel.py` | **2 failed** (see below; [log](test-runs/2026-10-19-pytest-with-realmodel.txt)) |
 | Hosted model API (OpenAI-compatible) | `tests/test_remote_provider.py` | **7 passed against a MOCK API server only**; no real provider tested (no key) |
-| Linux / Docker | GitHub Actions `ci.yml` | see "CI" below |
+| Linux / Docker | GitHub Actions `ci.yml` | **passing**: Linux 87 passed / 4 skipped, E2E 6 passed, Docker smoke OK (see "CI") |
 
 Skipped: `test_symlink_escape_rejected`. This Windows account cannot create symlinks. The equivalent junction and
-hard-link tests pass here, and the symlink test runs on Linux CI.
+hard-link tests pass here, and the symlink test passes on Linux CI.
 
 No test retries are configured (`retries: 0`; no rerun plugin). Nothing was skipped or weakened to get a pass.
 Failures are listed as failures.
@@ -105,12 +105,21 @@ Optional **hosted model API** (any OpenAI-compatible provider): opt-in via `.env
 Settings, key never stored in the DB or sent to the model, retries on 429/5xx, no retry on 4xx, cancellation before
 the first byte. **Tested only against a local MOCK server.**
 
-## CI
+## CI (GitHub Actions, Ubuntu 24.04): passing
 
-`.github/workflows/ci.yml` runs on GitHub-hosted Ubuntu 24.04: ruff, the full pytest suite with PostgreSQL 17
-(real-model tests auto-skip without Ollama), web lint/build, Playwright E2E, and a Docker Compose build + smoke test
-(`infra/scripts/docker_smoke.sh`). Its first results appear on the repository's Actions tab after publication. They
-were not available when this report was written.
+Run [39179076104](https://github.com/ehteshambuildagents/grokbot/actions/runs/39179076104) on commit `d2cbb9c`:
+- **Linux tests:** ruff clean; pytest **87 passed, 4 skipped** (skipped: Windows-only junction and Job Object tests,
+  and the 2 real-model tests because CI has no Ollama). The **symlink-escape test runs and passes on Linux**. Web
+  lint/build OK; Playwright E2E **6 passed**.
+- **Docker Compose smoke test** (`infra/scripts/docker_smoke.sh`): all images build; db/migrate/api/worker/computer
+  come up healthy; first-run setup works; the worker heartbeat is visible; api and computer run as non-root; no
+  Docker socket is mounted. A 1.5 GB allocation in a terminal command fails under the 1 GB RLIMIT_AS, the
+  cloud-metadata URL is blocked (400), and a public page (example.com) loads through the egress proxy.
+
+The first two CI runs failed and exposed real defects, fixed in follow-up commits:
+1. Backups archived workspace symlinks, which made restores fail (and on Windows a junction could have been
+   followed). Now only regular files and directories are archived.
+2. The Playwright base image tag did not exist, and the Compose migrate step pointed to the wrong config path.
 
 ## Measured resource use (dev host)
 

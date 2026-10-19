@@ -51,8 +51,8 @@ Status of every feature, honestly labelled: **[docs/CAPABILITIES.md](docs/CAPABI
 - **Not implemented:** voice, image/video generation, Office formats, MCP, Slack/X connectors, embeddings, vision
   models, visual (coordinate) computer control, isolation for hostile multi-user code.
 - **Needs configuration:** hosted model API (base URL + your API key; tested only against a mock server here), web
-  search (self-hosted SearXNG), remote access (TLS reverse proxy or VPN), Docker deployment (Linux; exercised by CI
-  only).
+  search (self-hosted SearXNG), remote access (TLS reverse proxy or VPN), Docker deployment (Linux; verified by the
+  CI smoke test, not by a long-running deployment).
 - Full list with reasons: [docs/CAPABILITIES.md](docs/CAPABILITIES.md) and [docs/BACKLOG.md](docs/BACKLOG.md).
 
 ## Hardware
