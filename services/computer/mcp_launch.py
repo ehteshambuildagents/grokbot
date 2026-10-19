@@ -26,7 +26,7 @@ def main():
     import resource
     mem = mem_mb * 1024 * 1024
     resource.setrlimit(resource.RLIMIT_AS, (mem, mem))
-    resource.setrlimit(resource.RLIMIT_NPROC, (max_procs * 8, max_procs * 8))
+    # Process/thread counts: container pids_limit (RLIMIT_NPROC is per-user on Linux; see sandbox.py).
     os.execvp(cmd[0], cmd)  # noqa: S606 — argv list configured by the account owner, no shell
 
 

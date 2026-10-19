@@ -16,6 +16,13 @@ from pathlib import Path
 LAUNCHER = Path(__file__).with_name("mcp_launch.py")
 
 
+def _root_cause(e: BaseException) -> str:
+    """anyio wraps failures in ExceptionGroups; report the innermost real error."""
+    while isinstance(e, BaseExceptionGroup) and e.exceptions:
+        e = e.exceptions[0]
+    return f"{type(e).__name__}: {e}"
+
+
 @dataclass
 class Session:
     digest: str
@@ -52,7 +59,9 @@ class MCPHub:
         try:
             if conn["transport"] == "stdio":
                 from mcp.client.stdio import stdio_client
-                transport = stdio_client(self._stdio_params(conn), errlog=open(os.devnull, "w"))  # noqa: SIM115
+                params = self._stdio_params(conn)
+                errlog = open(Path(conn["home"]) / "stderr.log", "w", encoding="utf-8")  # noqa: SIM115 — closed with the process
+                transport = stdio_client(params, errlog=errlog)
             else:
                 import httpx2
                 from mcp.client.streamable_http import streamable_http_client
@@ -64,7 +73,13 @@ class MCPHub:
                 s.ready.set()
                 await s.stop.wait()
         except Exception as e:  # noqa: BLE001 — surface any startup/transport failure to the caller
-            s.error = f"{type(e).__name__}: {e}"[:500]
+            s.error = _root_cause(e)
+            stderr = Path(conn.get("home", ".")) / "stderr.log"
+            if conn.get("transport") == "stdio" and stderr.exists():
+                tail = stderr.read_text("utf-8", errors="replace")[-600:].strip()
+                if tail:
+                    s.error += f" | server stderr: {tail}"
+            s.error = s.error[:1200]
         finally:
             s.client = None
             s.ready.set()

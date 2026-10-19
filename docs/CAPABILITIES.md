@@ -93,7 +93,7 @@ engine, policy and tool mechanics, not model quality. Real-model results are in 
 |---|---|---|
 | argv-only `run_command`; separately gated `run_shell` (off by default) | Tested | `test_terminal_timeout_env_scrub_and_cwd`, `test_shell_requires_approval_by_default` |
 | Timeouts, process-tree kill, scrubbed environment, workspace cwd | Tested | same + cancellation test |
-| Per-command memory and process limits, output cap without pipe deadlock | Tested (Windows + Linux CI) | Windows Job Objects: `test_terminal_memory_limit`, `test_terminal_process_limit`, `test_terminal_large_output_is_drained_and_capped`; POSIX rlimits run in the Linux CI job and the Docker smoke test |
+| Per-command memory limit and output cap without pipe deadlock; process-count cap (Windows Job Object; Linux: container `pids_limit`, since RLIMIT_NPROC is per-user) | Tested (Windows + Linux CI) | Windows Job Objects: `test_terminal_memory_limit`, `test_terminal_process_limit`, `test_terminal_large_output_is_drained_and_capped`; POSIX rlimits run in the Linux CI job and the Docker smoke test |
 | Terminal filesystem isolation | Unavailable natively | an approved command runs as the LocalCrew user; isolation requires the container/VM deployment |
 | Network control for terminal | Unavailable | natively unrestricted; in Compose the terminal shares the computer container's egress network (browser needs it) |
 | Workspace list/read/write/move/search/soft-delete; versioned overwrites | Tested | file API tests, crash test |

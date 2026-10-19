@@ -108,7 +108,8 @@ def _posix_limits(lim: Limits):
         resource.setrlimit(resource.RLIMIT_AS, (mem, mem))
         resource.setrlimit(resource.RLIMIT_FSIZE, (lim.file_size_mb << 20, lim.file_size_mb << 20))
         resource.setrlimit(resource.RLIMIT_CPU, (lim.cpu_seconds, lim.cpu_seconds))
-        resource.setrlimit(resource.RLIMIT_NPROC, (lim.max_procs * 8, lim.max_procs * 8))  # per-uid count
+        # No RLIMIT_NPROC: on Linux it counts every process *and thread* of the user (Chromium alone has hundreds),
+        # so it cannot express a per-command cap. Process counts are capped by the container's pids_limit instead.
     return apply
 
 
