@@ -1,9 +1,19 @@
 # Acceptance test report
 
-Latest: 2026-10-19, verification pass 2 (before first publication). Host: Windows 11 Pro, Intel i7-1265U, 15.6 GB
+Release v0.2.0 / v0.3.0, 2026-10-19. Reference machine: Windows 11 Pro, Intel i7-1265U, 15.6 GB
 RAM, no GPU, no Docker/WSL. Python 3.13.15, Node 24.19, PostgreSQL 17.6 (portable), Ollama 0.40.5, Playwright 1.64.
 
-## Summary (final code)
+## v0.3.0 (MCP servers)
+
+| Check | Result |
+|---|---|
+| `ruff check .` | clean |
+| Backend acceptance (`pytest --deselect tests/test_realmodel.py`) | **102 passed, 1 skipped** (adds `tests/test_mcp.py`: 14 tests over the real MCP protocol, stdio and Streamable HTTP) |
+| Web lint/build, Playwright E2E | clean, **6 passed** |
+| Manual UI check | MCP fixture server added via Connections, 6 tools discovered with correct effect classes, tool picker groups them per server |
+| Linux / Docker CI | see the Actions tab for the run on the v0.3.0 commit |
+
+## v0.2.0 summary
 
 | Check | Command | Result |
 |---|---|---|
@@ -47,7 +57,7 @@ re-trialed** (the official last round was stopped when the validator changed aga
 | 5 – before fenced-Markdown extraction | 3/5 | 1/5 |
 | 6 – before "calculate results are not evidence" | 2/5 | 3/5 |
 
-**Offline re-validation:** I re-checked all 50 stored real-model reports from every round against the final validator.
+**Offline re-validation:** all 50 stored real-model reports were re-checked from every round against the final validator.
 It accepts 11. All 11 state only correct figures (12.5% sales growth, 125% returns growth). One of them
 **mislabels** a correct figure ("October to November: 125%" for the returns change). Deterministic checks verify
 figures, not their labels. Every wrong report found in the trials is rejected by the final validator: 11.67%,
@@ -81,7 +91,7 @@ Use a stronger model (GPU host or a hosted API) for dependable deliverables.
 
 QA workflow (`test_qa_workflow_reproduce_report_and_ask_before_submit`): pass (MOCK).
 
-## Defects found and fixed in this pass (each has a regression test)
+## Defects found and fixed in v0.2.0 (each has a regression test)
 
 1. **Junction escape**: workspace search returned the contents of a file outside the workspace.
 2. **DNS rebinding**: check-then-connect was exploitable. Now pinned resolution for server-side HTTP, plus a pinning
@@ -99,7 +109,7 @@ QA workflow (`test_qa_workflow_reproduce_report_and_ask_before_submit`): pass (M
 8. A misconfigured model provider crashed the worker thread instead of failing the task.
 9. Hard-coded default internal token; ESLint react-hooks errors; ruff findings.
 
-## Added in this pass
+## Added in v0.2.0
 
 Optional **hosted model API** (any OpenAI-compatible provider): opt-in via `.env`, data-egress disclosure in
 Settings, key never stored in the DB or sent to the model, retries on 429/5xx, no retry on 4xx, cancellation before
@@ -121,7 +131,7 @@ The first two CI runs failed and exposed real defects, fixed in follow-up commit
    followed). Now only regular files and directories are archived.
 2. The Playwright base image tag did not exist, and the Compose migrate step pointed to the wrong config path.
 
-## Measured resource use (dev host)
+## Measured resource use (reference machine)
 
 API ~111 MB, worker ~98 MB, computer service ~90 MB, Playwright Chromium ~176 MB, PostgreSQL ~291 MB. Ollama with
 `qwen2.5:1.5b` loaded: 1.37 GB; with `qwen2.5:3b`: 2.42 GB. Generation: ~20–24 tok/s (1.5B) and ~10–12 tok/s (3B)

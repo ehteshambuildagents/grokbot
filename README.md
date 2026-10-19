@@ -1,4 +1,9 @@
-# LocalCrew (repository: grokbot)
+# LocalCrew
+
+[![CI](https://github.com/ehteshambuildagents/grokbot/actions/workflows/ci.yml/badge.svg)](https://github.com/ehteshambuildagents/grokbot/actions/workflows/ci.yml)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+![Python 3.13](https://img.shields.io/badge/python-3.13-blue.svg)
+![MCP](https://img.shields.io/badge/MCP-tools-6b4fbb.svg)
 
 **An independent, self-hosted AI teammate platform.** Named bots with their own roles, instructions, models, tools,
 policies and memory take on durable tasks that keep running after you close the page. They work in a dedicated
@@ -19,6 +24,11 @@ Status of every feature, honestly labelled: **[docs/CAPABILITIES.md](docs/CAPABI
 **[docs/TEST_REPORT.md](docs/TEST_REPORT.md)**.
 
 ## What works (tested)
+
+- **MCP servers, as many as you like:** connect any Model Context Protocol server (stdio command or HTTPS URL). Its
+  tools are discovered automatically and can be enabled per bot or per server. Every call is schema-validated,
+  policy-checked (read-only tools run directly; others need approval unless a rule allows them), sandboxed and
+  cancellable. See [Connecting MCP servers](#connecting-mcp-servers).
 
 - Bots: create, edit (versioned), pin, hide, duplicate (config only), delete with an impact report; group chats with
   @mentions.
@@ -48,7 +58,7 @@ Status of every feature, honestly labelled: **[docs/CAPABILITIES.md](docs/CAPABI
 
 ## Not implemented / needs configuration
 
-- **Not implemented:** voice, image/video generation, Office formats, MCP, Slack/X connectors, embeddings, vision
+- **Not implemented:** voice, image/video generation, Office formats, MCP resources/prompts/OAuth, Slack/X connectors, embeddings, vision
   models, visual (coordinate) computer control, isolation for hostile multi-user code.
 - **Needs configuration:** hosted model API (base URL + your API key; tested only against a mock server here), web
   search (self-hosted SearXNG), remote access (TLS reverse proxy or VPN), Docker deployment (Linux; verified by the
@@ -140,6 +150,28 @@ LOCALCREW_DEFAULT_MODEL=remote:gpt-4o-mini
 You can then skip installing Ollama. Task data (instructions, conversation, memories, tool results) is sent to the
 provider and you pay per token. Details and other providers: [docs/MODELS.md](docs/MODELS.md#hosted-model-apis-optional).
 
+## Connecting MCP servers
+
+Connections → **MCP servers** → name, transport, command (or URL), optional secret → **Connect & discover tools**.
+Then enable the server's tools in a bot's editor ("all tools of this server" or individual tools). Via the API:
+
+```bash
+curl -b cookies -H "X-CSRF-Token: <token>" -H "Content-Type: application/json" http://127.0.0.1:8000/api/connections -d '{
+  "connector": "mcp", "name": "github", "secret": "<token>",
+  "config": {"transport": "stdio", "command": "npx", "args": ["-y", "@modelcontextprotocol/server-github"],
+             "secret_as": {"kind": "env", "name": "GITHUB_PERSONAL_ACCESS_TOKEN"}}}'
+```
+
+| What | Behaviour |
+|---|---|
+| Tool names | `mcp__<server>__<tool>`; enable per tool or per server (`mcp:<connection_id>`) |
+| Permissions | `readOnlyHint` tools run directly; destructive and unannotated tools need approval; rules can allow `mcp__github__*` |
+| Secrets | one per server, injected as env var or header, encrypted at rest, never shown to models |
+| Isolation | stdio servers run in the computer service under memory/process limits with a scrubbed environment |
+| Lifecycle | sessions are reused; config changes restart them; removing a server removes its tools from all bots |
+
+The server's own runtime (Node for `npx`, `uv` for `uvx`) must be installed where the computer service runs.
+
 ## Models
 
 | Model | License | Report trials on the test laptop | Use |
@@ -169,6 +201,20 @@ including a hard kill. Deterministic engine tests use a clearly labelled **MOCK*
 (`pytest -m realmodel`) use Ollama and run when the model is installed. Real-model report trials:
 `python tests/eval/report_trials.py 5 qwen2.5:3b`.
 
+## Documentation
+
+| Document | Contents |
+|---|---|
+| [docs/ENGINEERING.md](docs/ENGINEERING.md) | How the system works end to end, design trade-offs, failure modes, how to extend it |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Components, data model, trust boundaries, MCP integration |
+| [docs/DECISIONS.md](docs/DECISIONS.md) | Architecture decision records |
+| [docs/CAPABILITIES.md](docs/CAPABILITIES.md) | Every capability with its verification status |
+| [docs/TEST_REPORT.md](docs/TEST_REPORT.md) | Measured results, including failures |
+| [docs/MODELS.md](docs/MODELS.md) | Local models, hosted APIs, hardware guidance |
+| [docs/OPERATIONS.md](docs/OPERATIONS.md) | Backup, restore, upgrade, MCP runtime setup, troubleshooting |
+| [docs/BACKLOG.md](docs/BACKLOG.md) | Prioritised open work |
+| [CHANGELOG.md](CHANGELOG.md) · [CONTRIBUTING.md](CONTRIBUTING.md) · [SECURITY.md](SECURITY.md) | Releases, development workflow, vulnerability reporting |
+
 ## Repository layout
 
 | Path | Contents |
@@ -176,7 +222,7 @@ including a hard kill. Deterministic engine tests use a clearly labelled **MOCK*
 | `apps/web` | React 19 + TypeScript + Vite + Tailwind client |
 | `services/api` | FastAPI app and the shared `localcrew` package (models, engine, policy, validation, tools, connectors), Alembic migrations |
 | `services/worker` | Durable task and routine worker |
-| `services/computer` | Browser (Playwright/Chromium), egress proxy, terminal sandbox |
+| `services/computer` | Browser (Playwright/Chromium), egress proxy, terminal sandbox, MCP client hub |
 | `packages/contracts` | Generated OpenAPI, tool schemas, event types |
 | `skills` | Skill templates |
 | `tests` | Acceptance tests, fixture app, model evals, E2E server |

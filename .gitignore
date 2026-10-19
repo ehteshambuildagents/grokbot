@@ -8,3 +8,6 @@ apps/web/dist/
 apps/web/test-results/
 apps/web/playwright-report/
 tests/e2e/.e2e-user.json
+build/
+*.egg-info/
+dist/
