@@ -11,7 +11,7 @@ RAM, no GPU, no Docker/WSL. Python 3.13.15, Node 24.19, PostgreSQL 17.6 (portabl
 | Backend acceptance (`pytest --deselect tests/test_realmodel.py`) | **102 passed, 1 skipped** (adds `tests/test_mcp.py`: 14 tests over the real MCP protocol, stdio and Streamable HTTP) |
 | Web lint/build, Playwright E2E | clean, **6 passed** |
 | Manual UI check | MCP fixture server added via Connections, 6 tools discovered with correct effect classes, tool picker groups them per server |
-| Linux / Docker CI | see the Actions tab for the run on the v0.3.0 commit |
+| Linux / Docker CI | Run [39183216239](https://github.com/ehteshambuildagents/grokbot/actions/runs/39183216239): Linux **101 passed, 4 skipped** (incl. all 14 MCP tests), E2E **6 passed**, Docker smoke OK. The first v0.3.0 run failed: stdio MCP servers could not start under the per-user `RLIMIT_NPROC` on Linux; fixed in `576059e` |
 
 ## v0.2.0 summary
 

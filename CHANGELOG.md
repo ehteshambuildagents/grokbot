@@ -16,6 +16,10 @@ All notable changes to LocalCrew. Format: [Keep a Changelog](https://keepachange
   with a scrubbed environment. One secret per server, injected as an env var or HTTP header by the broker; never
   visible to models.
 - Wildcard policy rules (`mcp__github__*`) to allow or deny a whole server's tools.
+
+### Fixed
+- Linux: per-user `RLIMIT_NPROC` prevented stdio MCP servers (and threaded commands) from starting; process counts
+  are now capped by the container's `pids_limit`. MCP startup errors report the root cause and server stderr.
 - `pyproject.toml`, contribution and security guides, issue/PR templates, and an engineering walkthrough
   (`docs/ENGINEERING.md`).
 
